@@ -516,7 +516,6 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
             unsigned short afi;
             unsigned char safi;
             unsigned char len;
-            unsigned char reserved;
             unsigned char nlri_plen;
             char nlri_prefix[16];
 
@@ -545,8 +544,7 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
                 printf ("nexthop2: %s\n", bufn2);
               }
             r += len;
-            reserved = (unsigned char) *r;
-            r++;
+            r++; /* reserved */
 
             nlri_plen = (unsigned char) *r;
             r++;

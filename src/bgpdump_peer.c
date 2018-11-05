@@ -26,6 +26,7 @@
 #include <arpa/inet.h>
 
 #include "bgpdump_route.h"
+#include "bgpdump_query.h"
 #include "bgpdump_ptree.h"
 
 #include "bgpdump_peer.h"
@@ -105,7 +106,7 @@ peer_route_count_by_plen_show ()
       printf ("%lu,", (unsigned long) timestamp);
       for (j = 0; j < 33; j++)
         {
-          printf ("%llu", peer_table[i].route_count_by_plen[j]);
+	  printf ("%llu", (unsigned long long)peer_table[i].route_count_by_plen[j]);
           if (j < 32)
             printf (",");
         }
