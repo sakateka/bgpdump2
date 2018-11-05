@@ -9,6 +9,14 @@ are permitted in any medium without royalty provided the copyright
 notice and this notice are preserved.  This file is offered as-is,
 without warranty of any kind.
 
+Pre-install (Ubuntu)
+====================
+
+sudo apt-get install libarchive-dev
+sudo apt-get install libbz2-dev
+sudo apt-get install liblz-dev
+sudo apt-get install zlib1g-dev
+
 Basic Installation
 ==================
 

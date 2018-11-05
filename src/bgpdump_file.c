@@ -18,7 +18,7 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <strings.h>
+#include <string.h>
 #include <stdint.h>
 #include <sys/types.h>
 #include <errno.h>

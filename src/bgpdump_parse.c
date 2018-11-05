@@ -18,7 +18,7 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <strings.h>
+#include <string.h>
 #include <stdlib.h>
 
 unsigned long long
