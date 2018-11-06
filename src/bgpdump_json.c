@@ -161,7 +161,9 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
       /*
        * Write the file header.
        */
-      JSONWRITE("{\n  \"objects\": [\n");
+      JSONWRITE("{\n  \"table\": ");
+      JSONWRITE("{ \"table_name\": \"default.bgp.peer-group.mrt-peer-%u.ipvX.unicast\" }", peer_index);
+      JSONWRITE(",\n  \"objects\": [\n");
   }
 
   /*
@@ -244,7 +246,7 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
   /*
    * Community
    */
-  {
+  if (route->community_size) {
       uint asn;
       uint local;
 
