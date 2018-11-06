@@ -35,7 +35,7 @@ extern int optopt;
 extern int opterr;
 extern int optreset;
 
-const char *optstring = "hVvdmbPp:a:uUrcjkN:M:gl:L:46H:";
+const char *optstring = "hVvdmbPp:a:uUrcjJkN:M:gl:L:46H:";
 const struct option longopts[] =
 {
   { "help",         no_argument,       NULL, 'h' },
@@ -44,6 +44,7 @@ const struct option longopts[] =
   { "debug",        no_argument,       NULL, 'd' },
   { "compat-mode",  no_argument,       NULL, 'm' },
   { "brief",        no_argument,       NULL, 'b' },
+  { "json",         no_argument,       NULL, 'J' },
   { "peer-table",   no_argument,       NULL, 'P' },
   { "peer",         required_argument, NULL, 'p' },
   { "autnum",       required_argument, NULL, 'a' },
@@ -71,6 +72,7 @@ const char opthelp[] = "\
 -d, --debug               Display debug information.\n\
 -m, --compat-mode         Display in libbgpdump -m compatible mode.\n\
 -b, --brief               List information (i.e., simple prefix-nexthops).\n\
+-J, --json                Dump routes into RtBrick compatible JSON file.\n\
 -P, --peer-table          Display the peer table and exit.\n\
 -p, --peer <peer_index>   Specify peers by peer_index.\n\
                           At most %d peers can be specified.\n\
@@ -115,6 +117,7 @@ char *lookup_addr = NULL;
 char *lookup_file = NULL;
 int heatmap = 0;
 char *heatmap_prefix;
+int json_file = 0;
 
 extern char *progname;
 extern int safi;
@@ -238,6 +241,9 @@ bgpdump_getopt (int argc, char **argv)
             }
           break;
 
+        case 'J':
+          json_file++;
+          break;
         case 'l':
           lookup++;
           lookup_addr = optarg;

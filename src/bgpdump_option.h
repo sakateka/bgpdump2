@@ -38,6 +38,8 @@ extern char *lookup_file;
 extern int peer_table_only;
 extern int heatmap;
 extern char *heatmap_prefix;
+extern int json_file;
+
 
 extern unsigned long long bufsiz;
 extern unsigned long long nroutes;

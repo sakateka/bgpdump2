@@ -36,8 +36,12 @@ struct bgp_route
   uint8_t origin;
   uint8_t atomic_aggregate;
   uint32_t localpref;
+  uint32_t localpref_found;
   uint32_t med;
   uint32_t community;
+  /* Misc flags */
+  u_int localpref_set:1,
+    med_set:1;
 };
 
 extern struct bgp_route *routes;
@@ -62,3 +66,8 @@ void route_print_compat (struct bgp_route *route);
 
 #endif /*_BGPDUMP_ROUTE_H_*/
 
+/*
+ * Local Variables:
+ * c-basic-offset: 2
+ * End:
+ */

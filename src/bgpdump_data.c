@@ -34,8 +34,8 @@
 #include "bgpdump_route.h"
 #include "bgpdump_peerstat.h"
 #include "bgpdump_udiff.h"
+#include "bgpdump_json.h"
 
-#include "queue.h"
 #include "ptree.h"
 
 extern struct bgp_route *diff_table[];
@@ -494,12 +494,14 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
           break;
 
         case LOCAL_PREF:
+	  route->localpref_set = 1;
           route->localpref = ntohl (*(uint32_t *)p);
           if (show && detail)
             printf ("  local-pref: %u\n", (uint32_t) route->localpref);
           break;
 
         case MULTI_EXIT_DISC:
+	  route->med_set = 1;
           route->med = ntohl (*(uint32_t *)p);
           if (show && detail)
             printf ("  med: %u\n", (uint32_t) route->med);
@@ -730,6 +732,9 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
         route_print (&route);
       else if (compat_mode)
         route_print_compat (&route);
+
+      if (json_file)
+	  route_print_json (&route, peer_index);
     }
 
   BUFFER_OVERRUN_CHECK(p, attribute_length, data_end)
@@ -969,3 +974,8 @@ bgpdump_process_table_dump_v2 (struct mrt_header *h, struct mrt_info *info,
     }
 }
 
+/*
+ * Local Variables:
+ * c-basic-offset: 2
+ * End:
+ */

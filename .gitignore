@@ -29,4 +29,7 @@ install-sh
 missing
 
 data
-
+*.json
+*bview
+*~
+TAGS
