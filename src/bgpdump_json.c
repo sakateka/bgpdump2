@@ -144,7 +144,8 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
        * Open file for writing.
        */
       snprintf(filename, sizeof(filename), "peer-%u.json", peer_index);
-      ctx->output_fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC, 644);
+      ctx->output_fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC,
+			    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH); /* chmod 644 */
       if (!ctx->output_fd) {
 	  free(ctx->write_buf);
 	  ctx->write_buf = NULL;
