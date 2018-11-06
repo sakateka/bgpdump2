@@ -145,7 +145,7 @@ route_print_compat (struct bgp_route *route)
 
   localpref = route->localpref;
   med = route->med;
-  community = route->community;
+  community = route->community[0];
 
   atomicaggr = (route->atomic_aggregate > 0 ? "AG" : "NAG");
   atomicaggr_asn_addr = "";

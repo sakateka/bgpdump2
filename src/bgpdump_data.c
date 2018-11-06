@@ -508,8 +508,18 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
           break;
 
         case COMMUNITY:
-          break;
+	  {
+	    int idx;
 
+	    route->community_size = attribute_length >> 2;
+	    if (route->community_size > ROUTE_COMM_LIMIT) {
+	      route->community_size = ROUTE_COMM_LIMIT;
+	    }
+	    for (idx = 0; idx < route->community_size; idx++) {
+	      route->community[idx] = ntohl (*(uint32_t *)(p+idx*4));
+	    }
+	    break;
+	  }
         case EXTENDED_COMMUNITY:
           break;
 

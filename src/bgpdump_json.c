@@ -244,6 +244,22 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
   /*
    * Community
    */
+  {
+      uint asn;
+      uint local;
+
+      JSONWRITE(",\n\t\"community\": [ ");
+      for (i = 0; i < MIN (route->community_size, ROUTE_COMM_LIMIT); i++) {
+	  asn = route->community[i] >> 16;
+	  local = route->community[i] & 0xffff;
+	  if (i == 0) {
+	      JSONWRITE("\"%u:%u\"", asn, local);
+	  } else {
+	      JSONWRITE(", \"%u:%u\"", asn, local);
+	  }
+      }
+      JSONWRITE(" ]");
+  }
 
   /*
    * Atomic aggregate.

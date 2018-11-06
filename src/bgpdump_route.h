@@ -21,10 +21,11 @@
 
 #define ROUTE_LIMIT_DEFAULT "1000K"
 #define ROUTE_PATH_LIMIT 128
+#define ROUTE_COMM_LIMIT 32
 
 #include "bgpdump.h"
 
-struct bgp_route
+struct __attribute__((__packed__)) bgp_route
 {
   char flag;
   char prefix[MAX_ADDR_LENGTH];
@@ -38,7 +39,8 @@ struct bgp_route
   uint32_t localpref;
   uint32_t localpref_found;
   uint32_t med;
-  uint32_t community;
+  uint32_t community[ROUTE_COMM_LIMIT];
+  uint8_t community_size;
   /* Misc flags */
   u_int localpref_set:1,
     med_set:1;
