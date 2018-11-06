@@ -726,11 +726,11 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
             }
         }
 
-      if (brief)
+      if (brief && !quiet)
         route_print_brief (&route);
-      else if (show)
+      else if (show && !quiet)
         route_print (&route);
-      else if (compat_mode)
+      else if (compat_mode && !quiet)
         route_print_compat (&route);
 
       if (json_file)

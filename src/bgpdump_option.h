@@ -19,6 +19,7 @@
 #define BGPDUMP_VERSION "v2.0.1"
 #define BGPDUMP_BUFSIZ_DEFAULT "16MiB"
 
+extern int quiet;
 extern int debug;
 extern int detail;
 extern int verbose;

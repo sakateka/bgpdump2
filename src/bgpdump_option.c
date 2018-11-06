@@ -35,7 +35,7 @@ extern int optopt;
 extern int opterr;
 extern int optreset;
 
-const char *optstring = "hVvdmbPp:a:uUrcjJkN:M:gl:L:46H:";
+const char *optstring = "hVvdmbPp:a:uUrcjJkN:M:gl:L:46H:q";
 const struct option longopts[] =
 {
   { "help",         no_argument,       NULL, 'h' },
@@ -44,6 +44,7 @@ const struct option longopts[] =
   { "debug",        no_argument,       NULL, 'd' },
   { "compat-mode",  no_argument,       NULL, 'm' },
   { "brief",        no_argument,       NULL, 'b' },
+  { "quite",        no_argument,       NULL, 'q' },
   { "json",         no_argument,       NULL, 'J' },
   { "peer-table",   no_argument,       NULL, 'P' },
   { "peer",         required_argument, NULL, 'p' },
@@ -87,6 +88,7 @@ const char opthelp[] = "\
 -M, --nroutes             Specify the size of the route_table.\n\
                           (default: %s)\n\
 -g, --benchmark           Measure the time to lookup.\n\
+-q, --quiet               Minimal verbosity output\n\
 -l, --lookup <addr>       Specify lookup address.\n\
 -L, --lookup-file <file>  Specify lookup address from a file.\n\
 -4, --ipv4                Specify that the query is IPv4. (default)\n\
@@ -96,6 +98,7 @@ const char opthelp[] = "\
 
 int longindex;
 
+int quiet = 0;
 int verbose = 0;
 int detail = 0;
 int debug = 0;
@@ -172,6 +175,9 @@ bgpdump_getopt (int argc, char **argv)
           break;
         case 'd':
           debug++;
+          break;
+        case 'q':
+          quiet++;
           break;
         case 'm':
           compat_mode++;
