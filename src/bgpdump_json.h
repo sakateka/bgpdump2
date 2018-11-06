@@ -10,6 +10,7 @@
 #define __BGPDUMP_JSON_H__
 
 void route_print_json (struct bgp_route *, uint16_t);
+void json_close_all(void);
 
 #define JSON_MAX_FILES 1000
 #define JSON_WRITEBUFSIZE 65536
@@ -38,6 +39,8 @@ struct json_ctx_ {
 
     /* JSON formatting stuff */
     int comma_obj;
+
+    uint prefixes;
 };
 
 #endif /* __BGPDUMP_JSON_H__ */

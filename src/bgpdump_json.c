@@ -129,7 +129,7 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
   if (!ctx) {
       char filename[128];
 
-      ctx = malloc(sizeof(struct json_ctx_));
+      ctx = calloc(1, sizeof(struct json_ctx_));
       if (!ctx) {
 	  return;
       }
@@ -139,11 +139,6 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
 	  free(ctx);
 	  return;
       }
-
-      /*
-       * Reset buffer.
-       */
-      ctx->write_idx = 0;
 
       /*
        * Open file for writing.
@@ -161,8 +156,6 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
        * Everything has been set up properly. Store the context.
        */
       json_ctx[peer_index] = ctx;
-
-      ctx->comma_obj = 0;
 
       /*
        * Write the file header.
@@ -265,5 +258,51 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
    * close rib-entry.
    */
   JSONWRITE("\n      }\n    }");
-  json_fflush(ctx);
+  ctx->prefixes++;
+}
+
+void
+json_close_all (void)
+{
+    struct json_ctx_ *ctx;
+    int idx;
+
+    for (idx = 0; idx < JSON_MAX_FILES; idx++) {
+
+	ctx = json_ctx[idx];
+
+	if (!ctx) {
+	    continue;
+	}
+
+	/*
+	 * Write the file trailer.
+	 */
+	JSONWRITE("\n  ]");
+	JSONWRITE(",\n  \"statistics\": { \"prefixes\": %u }", ctx->prefixes);
+	JSONWRITE("\n}\n");
+
+	/*
+	 * Flush the buffer.
+	 */
+	json_fflush(ctx);
+
+
+	/*
+	 * close file.
+	 */
+	close(ctx->output_fd);
+
+	/*
+	 * Free the write-buffer.
+	 */
+	free(ctx->write_buf);
+	ctx->write_buf = NULL;
+
+	/*
+	 * Destroy context.
+	 */
+	free(ctx);
+	json_ctx[idx] = NULL;
+    }
 }

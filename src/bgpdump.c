@@ -45,6 +45,7 @@
 #include "bgpdump_ptree.h"
 #include "bgpdump_peer.h"
 #include "bgpdump_peerstat.h"
+#include "bgpdump_json.h"
 
 extern int optind;
 
@@ -677,6 +678,10 @@ main (int argc, char **argv)
       peer_stat_show ();
       //peer_stat_finish ();
     }
+
+  if (json_file) {
+      json_close_all();
+  }
 
   free (buf);
 
