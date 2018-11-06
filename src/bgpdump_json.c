@@ -19,6 +19,7 @@
 #include <fcntl.h>
 
 #include "bgpdump_route.h"
+#include "bgpdump_peer.h"
 #include "bgpdump_json.h"
 
 /* json ctx */
@@ -186,16 +187,20 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
   JSONWRITE(",\n\t\"bgp_nh%s\": \"%s\"", qaf == AF_INET ? "4": "6", nexthop);
 
   /*
-   * Peer IP & ASN
+   * Peer BGP-ID
    */
-#if 0
   {
       char peer_addr[64];
 
-      inet_ntop (AF_INET, &peer_table[peer_index].ipv4_addr,
-		 peer_addr, sizeof (peer_addr));
-      peer_asn = peer_table[peer_index].asnumber;
+      inet_ntop(AF_INET, &peer_table[peer_index].bgp_id, peer_addr, sizeof(peer_addr));
+      JSONWRITE(",\n\t\"originator_id\": \"%s\"", peer_addr);
   }
+
+  /*
+   * Peer ASN
+   */
+#if 0
+  peer_asn = peer_table[peer_index].asnumber;
 #endif
 
   /*
