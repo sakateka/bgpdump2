@@ -163,7 +163,8 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
        * Write the file header.
        */
       JSONWRITE("{\n  \"table\": ");
-      JSONWRITE("{ \"table_name\": \"default.bgp.peer-group.mrt-peer-%u.ipvX.unicast\" }", peer_index);
+      JSONWRITE("{ \"table_name\": \"default.bgp.peer-group.mrt-peer-%u.ipv%s.unicast\" }",
+		peer_index, qaf == AF_INET ? "4": "6");
       JSONWRITE(",\n  \"objects\": [\n");
   }
 
@@ -178,7 +179,7 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
    */
   inet_ntop(qaf, route->prefix, prefix, sizeof(prefix));
   plen = route->prefix_length;
-  JSONWRITE("\t\"prefix4\": \"%s/%d\"", prefix, plen);
+  JSONWRITE("\t\"prefix%s\": \"%s/%d\"", qaf == AF_INET ? "4": "6", prefix, plen);
 
   /*
    * nexthop
