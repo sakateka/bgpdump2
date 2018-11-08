@@ -323,6 +323,7 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
 #define MP_REACH_NLRI    14
 #define MP_UNREACH_NLRI  15
 #define EXTENDED_COMMUNITY 16
+#define LARGE_COMMUNITY  32
 
   while (p < end)
     {
@@ -371,6 +372,9 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
           break;
         case EXTENDED_COMMUNITY:
           attr_name = "extended-community";
+          break;
+        case LARGE_COMMUNITY:
+          attr_name = "large-community";
           break;
         default:
           snprintf (unknown_buf, sizeof (unknown_buf),
@@ -515,13 +519,53 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
 	    if (route->community_size > ROUTE_COMM_LIMIT) {
 	      route->community_size = ROUTE_COMM_LIMIT;
 	    }
+
 	    for (idx = 0; idx < route->community_size; idx++) {
 	      route->community[idx] = ntohl (*(uint32_t *)(p+idx*4));
+
+	      if (show && detail) {
+		printf ("%s %u:%u",
+			idx ? "," : "  community:",
+			route->community[idx] >> 16,
+			route->community[idx] & 0xffff);
+	      }
 	    }
+
+	    if (show && detail)
+	      printf ("\n");
 	    break;
 	  }
+
         case EXTENDED_COMMUNITY:
           break;
+
+        case LARGE_COMMUNITY:
+	  {
+	    int idx;
+
+	    route->large_community_size = attribute_length/12;
+	    if (route->large_community_size > ROUTE_LARGE_COMM_LIMIT) {
+	      route->large_community_size = ROUTE_LARGE_COMM_LIMIT;
+	    }
+
+	    for (idx = 0; idx < route->large_community_size; idx++) {
+	      route->large_community[idx].global = ntohl (*(uint32_t *)(p+idx*12));
+	      route->large_community[idx].local1 = ntohl (*(uint32_t *)(p+idx*12+4));
+	      route->large_community[idx].local2 = ntohl (*(uint32_t *)(p+idx*12+8));
+
+	      if (show && detail) {
+		printf ("%s %u:%u:%u",
+			idx ? "," : "  large-community:",
+			route->large_community[idx].global,
+			route->large_community[idx].local1,
+			route->large_community[idx].local2);
+	      }
+	    }
+
+	    if (show && detail)
+	      printf ("\n");
+	    break;
+	  }
 
         case MP_REACH_NLRI:
           {

@@ -270,6 +270,25 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
   }
 
   /*
+   * Large Community
+   */
+  if (route->large_community_size) {
+      JSONWRITE(",\n\t\"large_community\": [ ");
+      for (i = 0; i < MIN (route->large_community_size, ROUTE_LARGE_COMM_LIMIT); i++) {
+	  if (i == 0) {
+	      JSONWRITE("\"%u:%u:%u\"", route->large_community[i].global,
+			route->large_community[i].local1,
+			route->large_community[i].local2);
+	  } else {
+	      JSONWRITE(", \"%u:%u:%u\"", route->large_community[i].global,
+			route->large_community[i].local1,
+			route->large_community[i].local2);
+	  }
+      }
+      JSONWRITE(" ]");
+  }
+
+  /*
    * Atomic aggregate.
    */
 #if 0
