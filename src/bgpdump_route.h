@@ -22,9 +22,17 @@
 #define ROUTE_LIMIT_DEFAULT "1000K"
 #define ROUTE_PATH_LIMIT 128
 #define ROUTE_COMM_LIMIT 32
+#define ROUTE_EXTD_COMM_LIMIT 16
 #define ROUTE_LARGE_COMM_LIMIT 16
 
 #include "bgpdump.h"
+
+struct __attribute__((__packed__)) bgp_extd_comm
+{
+  uint8_t type;
+  uint8_t subtype;
+  uint8_t value[6];
+};
 
 struct __attribute__((__packed__)) bgp_large_comm
 {
@@ -48,7 +56,9 @@ struct __attribute__((__packed__)) bgp_route
   uint32_t localpref_found;
   uint32_t med;
   uint32_t community[ROUTE_COMM_LIMIT];
+  struct bgp_extd_comm extd_community[ROUTE_COMM_LIMIT];
   uint8_t community_size;
+  uint8_t extd_community_size;
   uint8_t large_community_size;
   struct bgp_large_comm large_community[ROUTE_LARGE_COMM_LIMIT];
   /* Misc flags */

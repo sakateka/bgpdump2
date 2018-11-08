@@ -37,8 +37,8 @@
 #include "bgpdump_parse.h"
 #include "bgpdump_option.h"
 #include "bgpdump_file.h"
-#include "bgpdump_data.h"
 #include "bgpdump_route.h"
+#include "bgpdump_data.h"
 
 #include "bgpdump_savefile.h"
 #include "bgpdump_query.h"

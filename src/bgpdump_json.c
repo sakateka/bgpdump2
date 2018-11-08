@@ -19,6 +19,7 @@
 #include <fcntl.h>
 
 #include "bgpdump_route.h"
+#include "bgpdump_data.h"
 #include "bgpdump_peer.h"
 #include "bgpdump_json.h"
 
@@ -264,6 +265,21 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
 	      JSONWRITE("\"%u:%u\"", asn, local);
 	  } else {
 	      JSONWRITE(", \"%u:%u\"", asn, local);
+	  }
+      }
+      JSONWRITE(" ]");
+  }
+
+  /*
+   * Extended Community
+   */
+  if (route->extd_community_size) {
+      JSONWRITE(",\n\t\"extended_community\": [ ");
+      for (i = 0; i < MIN (route->extd_community_size, ROUTE_EXTD_COMM_LIMIT); i++) {
+	  if (i == 0) {
+	      JSONWRITE("\"%s\"", bgpdump_print_extd_comm(&route->extd_community[i]));
+	  } else {
+	      JSONWRITE(", \"%s\"", bgpdump_print_extd_comm(&route->extd_community[i]));
 	  }
       }
       JSONWRITE(" ]");

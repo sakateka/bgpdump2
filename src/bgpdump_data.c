@@ -29,9 +29,9 @@
 
 #include "bgpdump.h"
 #include "bgpdump_option.h"
-#include "bgpdump_data.h"
 #include "bgpdump_peer.h"
 #include "bgpdump_route.h"
+#include "bgpdump_data.h"
 #include "bgpdump_peerstat.h"
 #include "bgpdump_udiff.h"
 #include "bgpdump_json.h"
@@ -290,6 +290,70 @@ bgpdump_process_table_v2_peer_index_table (struct mrt_header *h,
     }
 }
 
+char *
+bgpdump_print_extd_comm (struct bgp_extd_comm *comm)
+{
+  static char buf[64];
+  char ipaddr_buf[64];
+
+  switch (comm->type << 8 | comm->subtype) {
+  case 0x0002:
+    snprintf(buf, sizeof(buf), "target:%u:%u",
+	     comm->value[0] << 8 |
+	     comm->value[1],
+	     comm->value[2] << 24 |
+	     comm->value[3] << 16 |
+	     comm->value[4] << 8 |
+	     comm->value[5]);
+    break;
+  case 0x0102:
+    inet_ntop(AF_INET, &comm->value[0], ipaddr_buf, sizeof(ipaddr_buf));
+    snprintf(buf, sizeof(buf), "target:%s:%u",
+	     ipaddr_buf, comm->value[4] << 8 | comm->value[5]);
+    break;
+  case 0x0202:
+    snprintf(buf, sizeof(buf), "target:%u:%u",
+	     comm->value[0] << 24 |
+	     comm->value[1] << 16 |
+	     comm->value[2] << 8 |
+	     comm->value[3],
+	     comm->value[4] << 8 |
+	     comm->value[5]);
+    break;
+  case 0x0003:
+    snprintf(buf, sizeof(buf), "origin:%u:%u",
+	     comm->value[0] << 8 |
+	     comm->value[1],
+	     comm->value[2] << 24 |
+	     comm->value[3] << 16 |
+	     comm->value[4] << 8 |
+	     comm->value[5]);
+    break;
+  case 0x0103:
+    inet_ntop(AF_INET, &comm->value[0], ipaddr_buf, sizeof(ipaddr_buf));
+    snprintf(buf, sizeof(buf), "origin:%s:%u",
+	     ipaddr_buf, comm->value[4] << 8 | comm->value[5]);
+    break;
+  case 0x0203:
+    snprintf(buf, sizeof(buf), "origin:%u:%u",
+	     comm->value[0] << 24 |
+	     comm->value[1] << 16 |
+	     comm->value[2] << 8 |
+	     comm->value[3],
+	     comm->value[4] << 8 |
+	     comm->value[5]);
+    break;
+  default:
+    snprintf(buf, sizeof(buf), "raw:0x%02x%02x%02x%02x%02x%02x%02x%02x",
+	     comm->type, comm->subtype, comm->value[0],
+	     comm->value[1], comm->value[2], comm->value[3],
+	     comm->value[4], comm->value[5]);
+    break;
+  }
+
+  return buf;
+}
+
 void
 bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
 {
@@ -537,6 +601,28 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
 	  }
 
         case EXTENDED_COMMUNITY:
+	  {
+	    int idx;
+
+	    route->extd_community_size = attribute_length >> 3;
+	    if (route->extd_community_size > ROUTE_EXTD_COMM_LIMIT) {
+	      route->extd_community_size = ROUTE_EXTD_COMM_LIMIT;
+	    }
+
+	    for (idx = 0; idx < route->extd_community_size; idx++) {
+	      memcpy(&route->extd_community[idx], p+idx*8, sizeof(struct bgp_extd_comm));
+
+	      if (show && detail) {
+		printf ("%s %s",
+			idx ? "," : "  extended-community:",
+			bgpdump_print_extd_comm(&route->extd_community[idx]));
+	      }
+	    }
+
+	    if (show && detail)
+	      printf ("\n");
+	    break;
+	  }
           break;
 
         case LARGE_COMMUNITY:
