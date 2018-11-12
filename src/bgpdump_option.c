@@ -18,6 +18,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <getopt.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -35,7 +36,7 @@ extern int optopt;
 extern int opterr;
 extern int optreset;
 
-const char *optstring = "hVvdmbPp:a:uUrcjJkN:M:gl:L:46H:q";
+const char *optstring = "hVvdmbPp:a:uUrcjJ:kN:M:gl:L:46H:qf:";
 const struct option longopts[] =
 {
   { "help",         no_argument,       NULL, 'h' },
@@ -45,7 +46,8 @@ const struct option longopts[] =
   { "compat-mode",  no_argument,       NULL, 'm' },
   { "brief",        no_argument,       NULL, 'b' },
   { "quite",        no_argument,       NULL, 'q' },
-  { "json",         no_argument,       NULL, 'J' },
+  { "json",         optional_argument, NULL, 'J' },
+  { "localpref",    required_argument, NULL, 'f' },
   { "peer-table",   no_argument,       NULL, 'P' },
   { "peer",         required_argument, NULL, 'p' },
   { "autnum",       required_argument, NULL, 'a' },
@@ -73,7 +75,8 @@ const char opthelp[] = "\
 -d, --debug               Display debug information.\n\
 -m, --compat-mode         Display in libbgpdump -m compatible mode.\n\
 -b, --brief               List information (i.e., simple prefix-nexthops).\n\
--J, --json                Dump routes into RtBrick compatible JSON file.\n\
+-J, --json <URL>          Dump routes as RtBrick JSON schema into BDS REST API.\n\
+-f, --localpref           Set Local-Preference Attribute in RtBrick JSON export.\n\
 -P, --peer-table          Display the peer table and exit.\n\
 -p, --peer <peer_index>   Specify peers by peer_index.\n\
                           At most %d peers can be specified.\n\
@@ -111,7 +114,7 @@ int udiff_verbose = 0;
 int udiff_lookup = 0;
 int route_count = 0;
 int plen_dist = 0;
-int stat = 0;
+int stats = 0;
 unsigned long long bufsiz = 0;
 unsigned long long nroutes = 0;
 int benchmark = 0;
@@ -120,7 +123,11 @@ char *lookup_addr = NULL;
 char *lookup_file = NULL;
 int heatmap = 0;
 char *heatmap_prefix;
-int json_file = 0;
+int json_dump = 0;
+char json_page[128];
+char json_ip[128];
+int json_port = 19091;
+int localpref = -1;
 
 extern char *progname;
 extern int safi;
@@ -227,7 +234,7 @@ bgpdump_getopt (int argc, char **argv)
           plen_dist++;
           break;
         case 'k':
-          stat++;
+          stats++;
           break;
 
         case 'N':
@@ -248,8 +255,18 @@ bgpdump_getopt (int argc, char **argv)
           break;
 
         case 'J':
-          json_file++;
+          json_dump++;
+	  memset(json_ip, 0 , sizeof(json_ip));
+	  memset(json_page, 0 , sizeof(json_page));
+	  if (optarg) {
+	      sscanf(optarg, "http://%99[^:]:%99d/%99[^\n]",
+		     json_ip, &json_port, json_page);
+	  }
           break;
+	case 'f':
+          localpref = strtoul(optarg, &endptr, 0);
+	  break;
+
         case 'l':
           lookup++;
           lookup_addr = optarg;

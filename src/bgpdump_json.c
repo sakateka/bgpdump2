@@ -14,10 +14,14 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <time.h>
 
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include "netdb.h"
+
+#include "bgpdump_option.h"
 #include "bgpdump_route.h"
 #include "bgpdump_data.h"
 #include "bgpdump_peer.h"
@@ -25,6 +29,8 @@
 
 /* json ctx */
 struct json_ctx_ *json_ctx[JSON_MAX_FILES] = { NULL };
+int sockfd = -1;
+
 
 /*
  * Flush the write buffer.
@@ -32,20 +38,54 @@ struct json_ctx_ *json_ctx[JSON_MAX_FILES] = { NULL };
 ssize_t
 json_fflush (struct json_ctx_ *ctx)
 {
+    char buffer[BUFSIZ];
+    ssize_t nbytes_read;
     int res = 0;
-
-#if 0
-    struct timespec {
-	time_t tv_sec;        /* seconds */
-	long   tv_nsec;       /* nanoseconds */
-    };
-#endif
+    struct iovec io[2];
+    struct timespec sleeptime, rem;
 
     if (!ctx || !ctx->write_idx) {
         return 0;
     }
 
-    res = write(ctx->output_fd, ctx->write_buf, ctx->write_idx);
+    sleeptime.tv_sec = 0;
+    sleeptime.tv_nsec = 100 * 1000 * 1000; /* 100ms */
+
+    /*
+     * Write the HTTP header.
+     */
+    io[0].iov_base = &ctx->header_buf;
+    io[0].iov_len = snprintf((char *)&ctx->header_buf, sizeof(ctx->header_buf),
+	"POST /%s HTTP/1.1\r\n"
+	"User-Agent: bgpdump2\r\n"
+	"Content-Type: application/json\r\n"
+	"Content-Length: %d"
+	"\r\n\r\n", json_page, ctx->write_idx);
+
+    /*
+     * Add payload to the IO Vector.
+     */
+    io[1].iov_base = ctx->write_buf;
+    io[1].iov_len = ctx->write_idx;
+
+    /*
+     * Log.
+     */
+    res = write(STDOUT_FILENO, io[0].iov_base, io[0].iov_len);
+
+    /*
+     * Write to file.
+     */
+    res = writev(ctx->output_fd, io, 2);
+
+    /*
+     * Write to socket.
+     */
+    if (sockfd != -1) {
+	res = writev(sockfd, io, 2);
+    }
+
+    ctx->chunk = 0;
 
     /*
      * Blocked ?
@@ -54,9 +94,7 @@ json_fflush (struct json_ctx_ *ctx)
 
 	switch (errno) {
 	case EAGAIN:
-
-	    /* nanosleep() */
-	    return -1;
+	    nanosleep(&sleeptime, &rem);
 	    break;
 
 	case EPIPE:
@@ -70,6 +108,7 @@ json_fflush (struct json_ctx_ *ctx)
 
 	default:
 	    ctx->write_idx = 0;
+
 	    /*
 	     * Unhandled failure in flushing
 	     */
@@ -81,15 +120,55 @@ json_fflush (struct json_ctx_ *ctx)
     /*
      * Full write ?
      */
-    if (res == (int)ctx->write_idx) {
+    if (res == io[0].iov_len + io[1].iov_len) {
 	ctx->write_idx = 0;
-	return res;
     }
 
     /*
+     * Read the response.
+     */
+    while ((nbytes_read = read(sockfd, buffer, BUFSIZ)) > 0) {
+
+	if (nbytes_read == -1) {
+	    switch(errno) {
+	    case EAGAIN:
+		nanosleep(&sleeptime, &rem);
+		break;
+
+	    case EPIPE:
+		exit(-1);
+		break;
+
+	default:
+		exit(-1);
+	    }
+	}
+
+        res = write(STDOUT_FILENO, buffer, nbytes_read);
+
+	if (nbytes_read) {
+	    char version[32];
+	    char reason[32];
+	    uint result = 0;
+
+	    sscanf(buffer, "%s %u %s\n", version, &result, reason);
+
+	    switch (result) {
+	    case 200:
+		break;
+	    default:
+		exit(-1);
+	    }
+	}
+    }
+
+
+
+#if 0
+    /*
      * Partial write ?
      */
-    if (res && res < (int)ctx->write_idx) {
+    if (res && res < (io[0].iov_len + io[1].iov_len)) {
 
 	/*
 	 * Rebase the buffer.
@@ -98,6 +177,7 @@ json_fflush (struct json_ctx_ *ctx)
 	ctx->write_idx -= res;
 	return res;
     }
+#endif
 
     /*
      * Must not happen.
@@ -159,14 +239,18 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
        * Everything has been set up properly. Store the context.
        */
       json_ctx[peer_index] = ctx;
+  }
+
+  if (ctx->chunk == 0) {
 
       /*
-       * Write the file header.
+       * Write the table header.
        */
       JSONWRITE("{\n  \"table\": ");
-      JSONWRITE("{ \"table_name\": \"default.bgp.1.peer-group.mrt-peer-%u.ipv%s.unicast\" }",
+      JSONWRITE("{ \"table_name\": \"default.bgp.1.peer-group.iBGP_100_%u.ipv%s.unicast\" }",
 		peer_index, qaf == AF_INET ? "4": "6");
       JSONWRITE(",\n  \"objects\": [\n");
+      ctx->root_obj_open = 1;
   }
 
   /*
@@ -241,6 +325,17 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
    */
   if (route->localpref_set) {
       JSONWRITE(",\n\t\"local_preference\": %u", route->localpref);
+  } else if (localpref != -1) {
+      JSONWRITE(",\n\t\"local_preference\": %d", localpref);
+  }
+
+  /*
+   * Peer Group Type.
+   */
+  if (localpref != -1) {
+      JSONWRITE(",\n\t\"pg_type\": \"ibgp\"");
+  } else {
+      JSONWRITE(",\n\t\"pg_type\": \"ebgp\"");
   }
 
   /*
@@ -319,6 +414,60 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
    */
   JSONWRITE("\n      }\n    }");
   ctx->prefixes++;
+  ctx->chunk++;
+
+  /*
+   * Close the object if this is the end of a chunk
+   */
+  if (ctx->chunk >= JSON_CHUNK) {
+      JSONWRITE("\n  ]");
+      JSONWRITE("\n}\n");
+      ctx->comma_obj = 0;
+      ctx->root_obj_open = 0;
+      ctx->chunk = 0;
+      json_fflush(ctx);
+  }
+}
+
+void
+json_open_socket (void) {
+
+    char       protoname[] = "tcp";
+    in_addr_t  in_addr;
+
+    struct protoent *protoent;
+    struct hostent *hostent;
+    struct sockaddr_in sockaddr_in;
+
+    /* Get socket. */
+    protoent = getprotobyname(protoname);
+    if (!protoent) {
+        return;
+    }
+    sockfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, protoent->p_proto);
+    if (sockfd == -1) {
+        return;
+    }
+
+    /* Prepare sockaddr_in. */
+    hostent = gethostbyname(json_ip);
+    if (!hostent) {
+        return;
+    }
+
+    in_addr = inet_addr(inet_ntoa(*(struct in_addr*)*(hostent->h_addr_list)));
+    if (in_addr == (in_addr_t)-1) {
+        return;
+    }
+
+    sockaddr_in.sin_addr.s_addr = in_addr;
+    sockaddr_in.sin_family = AF_INET;
+    sockaddr_in.sin_port = htons(json_port);
+
+    /* Do the actual connection. */
+    if (connect(sockfd, (struct sockaddr*)&sockaddr_in, sizeof(sockaddr_in)) == -1) {
+        return;
+    }
 }
 
 void
@@ -338,9 +487,10 @@ json_close_all (void)
 	/*
 	 * Write the file trailer.
 	 */
-	JSONWRITE("\n  ]");
-	JSONWRITE(",\n  \"statistics\": { \"prefixes\": %u }", ctx->prefixes);
-	JSONWRITE("\n}\n");
+	if (ctx->root_obj_open) {
+	    JSONWRITE("\n  ]");
+	    JSONWRITE("\n}\n");
+	}
 
 	/*
 	 * Flush the buffer.
@@ -364,5 +514,12 @@ json_close_all (void)
 	 */
 	free(ctx);
 	json_ctx[idx] = NULL;
+    }
+
+    /*
+     * Close the socket.
+     */
+    if (sockfd != -1) {
+	close(sockfd);
     }
 }

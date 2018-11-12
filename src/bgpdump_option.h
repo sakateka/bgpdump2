@@ -16,6 +16,9 @@
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef __BGPDUMP_OPTION_H__
+#define __BGPDUMP_OPTION_H__
+
 #define BGPDUMP_VERSION "v2.0.1"
 #define BGPDUMP_BUFSIZ_DEFAULT "16MiB"
 
@@ -31,7 +34,7 @@ extern int udiff_verbose;
 extern int udiff_lookup;
 extern int route_count;
 extern int plen_dist;
-extern int stat;
+extern int stats;
 extern int benchmark;
 extern int lookup;
 extern char *lookup_addr;
@@ -39,8 +42,11 @@ extern char *lookup_file;
 extern int peer_table_only;
 extern int heatmap;
 extern char *heatmap_prefix;
-extern int json_file;
-
+extern int json_dump;
+extern char json_page[];
+extern char json_ip[];
+extern int json_port;
+extern int localpref;
 
 extern unsigned long long bufsiz;
 extern unsigned long long nroutes;
@@ -51,3 +57,4 @@ void version ();
 int
 bgpdump_getopt (int argc, char **argv);
 
+#endif /* __BGPDUMP_OPTION_H__ */

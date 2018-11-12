@@ -480,11 +480,11 @@ main (int argc, char **argv)
 
   /* default cmd */
   if (! brief && ! show && ! route_count && ! plen_dist && ! udiff &&
-      ! lookup && ! peer_table_only && ! stat && ! compat_mode &&
+      ! lookup && ! peer_table_only && ! stats && ! compat_mode &&
       ! autsiz && ! heatmap)
     show++;
 
-  if (stat)
+  if (stats)
     peer_stat_init ();
 
   char *buf;
@@ -531,6 +531,11 @@ main (int argc, char **argv)
           diff_ptree[1] = ptree_create ();
         }
     }
+
+  if (json_dump) {
+      json_open_socket();
+  }
+
 
   /* for each rib files. */
   for (i = 0; i < argc; i++)
@@ -673,13 +678,13 @@ main (int argc, char **argv)
         }
     }
 
-  if (stat)
+  if (stats)
     {
       peer_stat_show ();
       //peer_stat_finish ();
     }
 
-  if (json_file) {
+  if (json_dump) {
       json_close_all();
   }
 

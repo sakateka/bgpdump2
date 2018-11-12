@@ -778,13 +778,13 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
       memcpy (route.prefix, prefix, (prefix_length + 7) / 8);
       route.prefix_length = prefix_length;
 
-      if (brief || show || lookup || udiff || stat ||
+      if (brief || show || lookup || udiff || stats ||
           compat_mode || autsiz || heatmap)
         bgpdump_process_bgp_attributes (&route, p, p + attribute_length);
 
       /* Now all the BGP attributes for this rib_entry are processed. */
 
-      if (stat)
+      if (stats)
         {
           int i, peer_match = 0;
 
@@ -873,7 +873,7 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
       else if (compat_mode && !quiet)
         route_print_compat (&route);
 
-      if (json_file)
+      if (json_dump)
 	  route_print_json (&route, peer_index);
     }
 
