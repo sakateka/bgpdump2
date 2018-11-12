@@ -14,6 +14,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <sys/ioctl.h>
 #include <time.h>
 
 #include <sys/stat.h>
@@ -39,7 +40,6 @@ ssize_t
 json_fflush (struct json_ctx_ *ctx)
 {
     char buffer[BUFSIZ];
-    ssize_t nbytes_read;
     int res = 0;
     struct iovec io[2];
     struct timespec sleeptime, rem;
@@ -127,58 +127,33 @@ json_fflush (struct json_ctx_ *ctx)
     /*
      * Read the response.
      */
-    while ((nbytes_read = read(sockfd, buffer, BUFSIZ)) > 0) {
+    while (1) {
+	int len = 0;
+	char version[32];
+	char reason[32];
+	uint result = 0;
 
-	if (nbytes_read == -1) {
-	    switch(errno) {
-	    case EAGAIN:
-		nanosleep(&sleeptime, &rem);
-		break;
+	ioctl(sockfd, FIONREAD, &len);
+	if (len > 0) {
+	    len = read(sockfd, buffer, len);
 
-	    case EPIPE:
-		exit(-1);
-		break;
-
-	default:
-		exit(-1);
-	    }
-	}
-
-        res = write(STDOUT_FILENO, buffer, nbytes_read);
-
-	if (nbytes_read) {
-	    char version[32];
-	    char reason[32];
-	    uint result = 0;
+	    /*
+	     * Log.
+	     */
+	    res = write(STDOUT_FILENO, buffer, len);
 
 	    sscanf(buffer, "%s %u %s\n", version, &result, reason);
 
-	    switch (result) {
-	    case 200:
-		break;
-	    default:
+	    if (result != 200) {
 		exit(-1);
 	    }
+
+	    break; /* exit read loop */
 	}
-    }
 
-
-
-#if 0
-    /*
-     * Partial write ?
-     */
-    if (res && res < (io[0].iov_len + io[1].iov_len)) {
-
-	/*
-	 * Rebase the buffer.
-	 */
-	memcpy(ctx->write_buf, ctx->write_buf+res, ctx->write_idx - res);
-	ctx->write_idx -= res;
-	return res;
-    }
-#endif
-
+	nanosleep(&sleeptime, &rem);
+    } 
+    
     /*
      * Must not happen.
      */
@@ -324,9 +299,9 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
    * Local Preference
    */
   if (route->localpref_set) {
-      JSONWRITE(",\n\t\"local_preference\": %u", route->localpref);
+      JSONWRITE(",\n\t\"local_preference\": \"%u\"", route->localpref);
   } else if (localpref != -1) {
-      JSONWRITE(",\n\t\"local_preference\": %d", localpref);
+      JSONWRITE(",\n\t\"local_preference\": \"%d\"", localpref);
   }
 
   /*
@@ -444,7 +419,7 @@ json_open_socket (void) {
     if (!protoent) {
         return;
     }
-    sockfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, protoent->p_proto);
+    sockfd = socket(AF_INET, SOCK_STREAM, protoent->p_proto);
     if (sockfd == -1) {
         return;
     }
