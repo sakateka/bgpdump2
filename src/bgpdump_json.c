@@ -83,39 +83,17 @@ json_fflush (struct json_ctx_ *ctx)
      */
     if (sockfd != -1) {
 	res = writev(sockfd, io, 2);
+
+	if (res == -1) {
+	    printf("## errno %u\n", errno);
+	    return -1;
+	}
+
+	printf("## wrote %u prefixes, %u total\n", JSON_CHUNK, ctx->prefixes);
     }
 
     ctx->chunk = 0;
 
-    /*
-     * Blocked ?
-     */
-    if (res == -1) {
-
-	switch (errno) {
-	case EAGAIN:
-	    nanosleep(&sleeptime, &rem);
-	    break;
-
-	case EPIPE:
-
-	    /*
-	     * reset the buffer for unresponsive callers.
-	     */
-	    ctx->write_idx = 0;
-	    return -1;
-	    break;
-
-	default:
-	    ctx->write_idx = 0;
-
-	    /*
-	     * Unhandled failure in flushing
-	     */
-	    break;
-	}
-	return -1;
-    }
 
     /*
      * Full write ?
@@ -141,18 +119,26 @@ json_fflush (struct json_ctx_ *ctx)
 	     * Log.
 	     */
 	    res = write(STDOUT_FILENO, buffer, len);
+	    res = write(ctx->output_fd, buffer, len);
 
 	    sscanf(buffer, "%s %u %s\n", version, &result, reason);
 
+#if 0
 	    if (result != 200) {
 		exit(-1);
 	    }
+#endif
 
 	    break; /* exit read loop */
 	}
 
 	nanosleep(&sleeptime, &rem);
     } 
+
+    /*
+     * All done.
+     */
+    ctx->fflush = 0;
     
     /*
      * Must not happen.
@@ -390,6 +376,10 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
   JSONWRITE("\n      }\n    }");
   ctx->prefixes++;
   ctx->chunk++;
+
+  if (ctx->fflush) {
+      json_fflush(ctx);
+  }
 
   /*
    * Close the object if this is the end of a chunk

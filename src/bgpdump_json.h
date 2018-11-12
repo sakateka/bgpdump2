@@ -20,15 +20,15 @@ void json_close_all(void);
  * We need to slice our updates to chunks of <N> size,
  * such that we do not cause memspikes at the receiver.
  */
-#define JSON_CHUNK 1000
+#define JSON_CHUNK 100
 
 /*
  * Handy macro to write into a buffer.
- * Buffer gets auto-flushed if buffer watermark reaches 90%.
+ * Buffer gets auto-flushed if buffer watermark reaches 95%.
  */
 #define JSONWRITE(...) do {                                                     \
     if (ctx->write_idx > ((JSON_WRITEBUFSIZE/20)*19)) {                          \
-        json_fflush(ctx);                                                       \
+        ctx->fflush = 1;						\
     }                                                                           \
     ctx->write_idx += snprintf(((char *)ctx->write_buf + ctx->write_idx),       \
                         (JSON_WRITEBUFSIZE - ctx->write_idx - 1),               \
@@ -46,6 +46,7 @@ struct json_ctx_ {
 
     /* I/O */
     int output_fd;
+    int fflush;
 
     /* JSON formatting stuff */
     int comma_obj;
