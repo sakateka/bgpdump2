@@ -14,13 +14,13 @@ void json_open_socket(void);
 void json_close_all(void);
 
 #define JSON_MAX_FILES 1000
-#define JSON_WRITEBUFSIZE 65536
+#define JSON_WRITEBUFSIZE 1024*4096
 
 /*
  * We need to slice our updates to chunks of <N> size,
  * such that we do not cause memspikes at the receiver.
  */
-#define JSON_CHUNK 100
+#define JSON_CHUNK 1000
 
 /*
  * Handy macro to write into a buffer.
@@ -53,6 +53,7 @@ struct json_ctx_ {
     int root_obj_open;
 
     uint prefixes;
+    uint chunk_prefixes;
     uint chunk;
 };
 

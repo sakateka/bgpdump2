@@ -89,10 +89,11 @@ json_fflush (struct json_ctx_ *ctx)
 	    return -1;
 	}
 
-	printf("## wrote %u prefixes, %u total\n", JSON_CHUNK, ctx->prefixes);
+	printf("## wrote %u prefixes, %u total\n", ctx->chunk_prefixes, ctx->prefixes);
     }
 
     ctx->chunk = 0;
+    ctx->chunk_prefixes = 0;
 
 
     /*
@@ -376,6 +377,7 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
    */
   JSONWRITE("\n      }\n    }");
   ctx->prefixes++;
+  ctx->chunk_prefixes++;
   ctx->chunk++;
 
   if (ctx->fflush) {
@@ -433,6 +435,16 @@ json_open_socket (void) {
     /* Do the actual connection. */
     if (connect(sockfd, (struct sockaddr*)&sockaddr_in, sizeof(sockaddr_in)) == -1) {
         return;
+    }
+
+    {
+	/* Now lets try to set the send buffer size to 4194304 bytes */
+	int size = 4096*1024;
+	int err;
+	err = setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF,  &size, sizeof(int));
+	if (err != 0) {
+	    printf("Unable to set send buffer size, continuing with default size\n");
+	}
     }
 }
 
