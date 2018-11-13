@@ -49,7 +49,7 @@ json_fflush (struct json_ctx_ *ctx)
     }
 
     sleeptime.tv_sec = 0;
-    sleeptime.tv_nsec = 100 * 1000 * 1000; /* 100ms */
+    sleeptime.tv_nsec = 10 * 1000 * 1000; /* 10ms */
 
     /*
      * Write the HTTP header.
@@ -69,12 +69,7 @@ json_fflush (struct json_ctx_ *ctx)
     io[1].iov_len = ctx->write_idx;
 
     /*
-     * Log.
-     */
-    res = write(STDOUT_FILENO, io[0].iov_base, io[0].iov_len);
-
-    /*
-     * Write to file.
+     * Log to file.
      */
     res = writev(ctx->output_fd, io, 2);
 
@@ -89,7 +84,10 @@ json_fflush (struct json_ctx_ *ctx)
 	    return -1;
 	}
 
-	printf("## wrote %u prefixes, %u total\n", ctx->chunk_prefixes, ctx->prefixes);
+	printf("## wrote %u prefixes, %u bytes, %u prefixes total",
+	       ctx->chunk_prefixes,
+	       (unsigned int)io[0].iov_len + (unsigned int)io[1].iov_len,
+	       ctx->prefixes);
     }
 
     ctx->chunk = 0;
@@ -119,18 +117,13 @@ json_fflush (struct json_ctx_ *ctx)
 	    /*
 	     * Log.
 	     */
-	    res = write(STDOUT_FILENO, buffer, len);
 	    res = write(ctx->output_fd, buffer, len);
 
 	    sscanf(buffer, "%s %u %s\n", version, &result, reason);
-
-#if 0
-	    if (result != 200) {
-		exit(-1);
+	    if (result) {
+		printf(", got %u %s\n", result, reason);
+		break; /* exit read loop */
 	    }
-#endif
-
-	    break; /* exit read loop */
 	}
 
 	nanosleep(&sleeptime, &rem);
