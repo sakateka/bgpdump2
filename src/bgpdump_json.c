@@ -451,6 +451,7 @@ json_open_socket (void) {
 void
 json_close_all (void)
 {
+    struct timespec sleeptime, rem;
     struct json_ctx_ *ctx;
     int idx;
 
@@ -468,6 +469,7 @@ json_close_all (void)
 	if (ctx->root_obj_open) {
 	    JSONWRITE("\n  ]");
 	    JSONWRITE("\n}\n");
+	    ctx->root_obj_open = 0;
 	}
 
 	/*
@@ -493,6 +495,10 @@ json_close_all (void)
 	free(ctx);
 	json_ctx[idx] = NULL;
     }
+
+    sleeptime.tv_sec = 5;
+    sleeptime.tv_nsec = 0;
+    nanosleep(&sleeptime, &rem);
 
     /*
      * Close the socket.
