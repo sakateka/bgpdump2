@@ -294,9 +294,13 @@ char *
 bgpdump_print_extd_comm (struct bgp_extd_comm *comm)
 {
   static char buf[64];
+#if 0
   char ipaddr_buf[64];
+#endif
 
   switch (comm->type << 8 | comm->subtype) {
+#if 0 /* BDS does not yet support this */
+
   case 0x0002:
     snprintf(buf, sizeof(buf), "target:%u:%u",
 	     comm->value[0] << 8 |
@@ -343,6 +347,7 @@ bgpdump_print_extd_comm (struct bgp_extd_comm *comm)
 	     comm->value[4] << 8 |
 	     comm->value[5]);
     break;
+#endif
   default:
     snprintf(buf, sizeof(buf), "raw:0x%02x%02x%02x%02x%02x%02x%02x%02x",
 	     comm->type, comm->subtype, comm->value[0],

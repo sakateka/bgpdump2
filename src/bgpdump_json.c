@@ -330,7 +330,6 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
   /*
    * Extended Community
    */
-#if 0
   if (route->extd_community_size) {
       JSONWRITE(",\n\t\"extended_community\": [ ");
       for (i = 0; i < MIN (route->extd_community_size, ROUTE_EXTD_COMM_LIMIT); i++) {
@@ -342,7 +341,7 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
       }
       JSONWRITE(" ]");
   }
-#endif
+
   /*
    * Large Community
    */
