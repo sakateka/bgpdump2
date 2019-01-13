@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
+#include <sys/uio.h>
 #include <time.h>
 
 #include <sys/stat.h>
