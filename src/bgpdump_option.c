@@ -36,7 +36,7 @@ extern int optopt;
 extern int opterr;
 extern int optreset;
 
-const char *optstring = "hVvdmbPp:a:uUrcjJ:kN:M:gl:L:46H:qf:";
+const char *optstring = "hVvdmbPp:a:uUrcjJ:kN:M:gl:L:46H:qf:G:";
 const struct option longopts[] =
 {
   { "help",         no_argument,       NULL, 'h' },
@@ -56,6 +56,7 @@ const struct option longopts[] =
   { "diff-table",   no_argument,       NULL, 'r' },
   { "count",        no_argument,       NULL, 'c' },
   { "plen-dist",    no_argument,       NULL, 'j' },
+  { "peer-group",   required_argument, NULL, 'G' },
   { "peer-stat",    no_argument,       NULL, 'k' },
   { "bufsiz",       required_argument, NULL, 'N' },
   { "nroutes",      required_argument, NULL, 'M' },
@@ -76,6 +77,7 @@ const char opthelp[] = "\
 -m, --compat-mode         Display in libbgpdump -m compatible mode.\n\
 -b, --brief               List information (i.e., simple prefix-nexthops).\n\
 -J, --json <URL>          Dump routes as RtBrick JSON schema into BDS REST API.\n\
+-G, --peer-group <name>   Peer group table name. In combination with --json option\n\
 -f, --localpref           Set Local-Preference Attribute in RtBrick JSON export.\n\
 -P, --peer-table          Display the peer table and exit.\n\
 -p, --peer <peer_index>   Specify peers by peer_index.\n\
@@ -126,6 +128,7 @@ char *heatmap_prefix;
 int json_dump = 0;
 char json_page[128];
 char json_ip[128];
+char *json_peergroup = NULL;;
 int json_port = 19091;
 int localpref = -1;
 
@@ -261,6 +264,11 @@ bgpdump_getopt (int argc, char **argv)
 	  if (optarg) {
 	      sscanf(optarg, "http://%99[^:]:%99d/%99[^\n]",
 		     json_ip, &json_port, json_page);
+	  }
+          break;
+        case 'G':
+	  if (optarg) {
+	      json_peergroup = strdup(optarg);
 	  }
           break;
 	case 'f':

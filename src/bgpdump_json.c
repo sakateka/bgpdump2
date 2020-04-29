@@ -204,8 +204,13 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
        * Write the table header.
        */
       JSONWRITE("{\n  \"table\": ");
-      JSONWRITE("{ \"table_name\": \"default.bgp.1.peer-group.iBGP_100_%u.ipv%s.unicast\" }",
-		peer_index, qaf == AF_INET ? "4": "6");
+      if (json_peergroup) {
+	  JSONWRITE("{ \"table_name\": \"default.bgp.1.peer-group.%s.ipv%s.unicast\" }",
+		    json_peergroup, qaf == AF_INET ? "4": "6");
+      } else {
+	  JSONWRITE("{ \"table_name\": \"default.bgp.1.peer-group.iBGP_100_%u.ipv%s.unicast\" }",
+		    peer_index, qaf == AF_INET ? "4": "6");
+      }
       JSONWRITE(",\n  \"objects\": [\n");
       ctx->root_obj_open = 1;
   }
