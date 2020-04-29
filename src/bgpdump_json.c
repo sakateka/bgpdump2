@@ -59,6 +59,7 @@ json_fflush (struct json_ctx_ *ctx)
     io[0].iov_len = snprintf((char *)&ctx->header_buf, sizeof(ctx->header_buf),
 	"POST /%s HTTP/1.1\r\n"
 	"User-Agent: bgpdump2\r\n"
+	"Host: ctrld\r\n"
 	"Content-Type: application/json\r\n"
 	"Content-Length: %d"
 	"\r\n\r\n", json_page, ctx->write_idx);
@@ -122,7 +123,7 @@ json_fflush (struct json_ctx_ *ctx)
 
 	    sscanf(buffer, "%s %u %s\n", version, &result, reason);
 	    if (result) {
-		printf(", got %u %s\n", result, reason);
+		printf(", got %s", buffer);
 		break; /* exit read loop */
 	    }
 	}
