@@ -1,3 +1,7 @@
+RTB-usage
+https://docs.google.com/document/d/1DsKQtDw7eEm1xFwf3nPlsurVs2F_csU9JSxD_G0WPsM/
+
+% ./bgpdump2 -q --localpref 200 -J http://192.168.200.50:19091/api/application-rest-proxy/injector/bgp.iod.1/bds/object/add -p 1 latest-bview.gz
 
 * usage examples
 
