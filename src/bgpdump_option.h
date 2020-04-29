@@ -46,6 +46,7 @@ extern int json_dump;
 extern char json_page[];
 extern char json_ip[];
 extern int json_port;
+extern char *json_peergroup;
 extern int localpref;
 
 extern unsigned long long bufsiz;
