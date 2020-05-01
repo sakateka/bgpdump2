@@ -4,7 +4,7 @@ https://docs.google.com/document/d/1DsKQtDw7eEm1xFwf3nPlsurVs2F_csU9JSxD_G0WPsM/
 #example for an external peergroup
 % ./bgpdump2 -q -J http://192.168.202.121:19091/api/application-rest-proxy/rtbrick/bgp.appd.1/bds/object/add -p 1 -G leaf2 latest-bview.gz
 #example for an internal peergroup
-% ./bgpdump2 -q --localpref 200 -J http://192.168.200.50:19091/api/application-rest-proxy/injector/bgp.iod.1/bds/object/add -p 1 -G ibgp latest-bview.gz
+% ./bgpdump2 -q --localpref 200 -J http://192.168.200.50:19091/api/application-rest-proxy/rtbrick/bgp.iod.1/bds/object/add -p 1 -G ibgp latest-bview.gz
 
 * usage examples
 
