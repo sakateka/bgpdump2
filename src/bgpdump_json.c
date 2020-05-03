@@ -235,6 +235,11 @@ route_print_json (struct bgp_route *route, uint16_t peer_index)
   JSONWRITE(",\n\t\"bgp_nh%s\": \"%s\"", qaf == AF_INET ? "4": "6", nexthop);
 
   /*
+   * send_path_id
+   */
+  JSONWRITE(",\n\t\"send_path_id\": \"%u\"", peer_index);
+
+  /*
    * Peer BGP-ID
    */
   {
