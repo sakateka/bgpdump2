@@ -98,7 +98,7 @@ am_bgpdump2_OBJECTS = bgpdump_file.$(OBJEXT) bgpdump_peer.$(OBJEXT) \
 	bgpdump_ptree.$(OBJEXT) bgpdump_peerstat.$(OBJEXT) \
 	bgpdump_option.$(OBJEXT) bgpdump_parse.$(OBJEXT) \
 	bgpdump_udiff.$(OBJEXT) bgpdump_json.$(OBJEXT) \
-	bgpdump.$(OBJEXT)
+	bgpdump_blaster.$(OBJEXT) bgpdump.$(OBJEXT)
 bgpdump2_OBJECTS = $(am_bgpdump2_OBJECTS)
 bgpdump2_LDADD = $(LDADD)
 AM_V_P = $(am__v_P_@AM_V@)
@@ -249,7 +249,7 @@ bgpdump2_SOURCES = \
   benchmark.c ptree.c queue.c \
   bgpdump_savefile.c bgpdump_query.c bgpdump_ptree.c \
   bgpdump_peerstat.c bgpdump_option.c bgpdump_parse.c \
-  bgpdump_udiff.c bgpdump_json.c \
+  bgpdump_udiff.c bgpdump_json.c bgpdump_blaster.c \
   bgpdump.c
 
 noinst_HEADERS = \
