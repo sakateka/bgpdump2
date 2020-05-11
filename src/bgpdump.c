@@ -25,6 +25,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/time.h>
+#include <sys/queue.h>
 #include <getopt.h>
 #include <assert.h>
 #include <errno.h>

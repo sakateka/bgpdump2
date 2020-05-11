@@ -16,6 +16,7 @@
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/uio.h>
+#include <sys/queue.h>
 #include <time.h>
 
 #include <sys/stat.h>
@@ -23,6 +24,7 @@
 
 #include "netdb.h"
 
+#include "ptree.h"
 #include "bgpdump_option.h"
 #include "bgpdump_route.h"
 #include "bgpdump_data.h"

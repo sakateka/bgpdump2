@@ -22,11 +22,13 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/queue.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <time.h>
 #include <assert.h>
 
+#include "ptree.h"
 #include "bgpdump.h"
 #include "bgpdump_option.h"
 #include "bgpdump_peer.h"
@@ -35,8 +37,6 @@
 #include "bgpdump_peerstat.h"
 #include "bgpdump_udiff.h"
 #include "bgpdump_json.h"
-
-#include "ptree.h"
 
 extern struct bgp_route *diff_table[];
 extern struct ptree *diff_ptree[];
@@ -195,6 +195,9 @@ bgpdump_table_v2_peer_entry (int index, char *p, char *data_end, int *retsize)
       new.ipv6_addr = ipv6_addr;
       new.ipv4_addr = ipv4_addr;
       new.asnumber = (asn4byte ? peer_as_4byte : peer_as_2byte);
+      new.ipv4_root = ptree_create();
+      new.ipv6_root = ptree_create();
+      new.path_root = ptree_create();
 
       if (verbose || peer_table_only ||
           (memcmp (&peer_table[index], &peer_null, sizeof (struct peer)) &&
@@ -720,6 +723,60 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
 }
 
 void
+bgpdump_add_prefix (struct bgp_route *route, int index, char *raw_path, uint16_t path_length)
+{
+  struct bgp_path_ *bgp_path;
+  struct ptree_node *bgp_path_node;
+  struct bgp_prefix_ *bgp_prefix;
+  char *path = NULL;
+
+  /*
+   * Check first if the path-attributes are known.
+   */
+  bgp_path_node = ptree_search(raw_path, path_length * 8, peer_table[index].path_root);
+
+  if (!bgp_path_node) {
+
+    if (!path_length) {
+      return;
+    }
+
+    path = malloc(path_length);
+    if (!path) {
+      return;
+    }
+    memcpy(path, raw_path, path_length);
+
+    bgp_path = calloc(1, sizeof(struct bgp_path_));
+    if (!bgp_path) {
+      return;
+    }
+    bgp_path->pnode = ptree_add(path, path_length * 8, bgp_path, peer_table[index].path_root);
+    bgp_path->path_length = path_length;
+    CIRCLEQ_INIT(&bgp_path->path_qhead);
+  } else {
+    bgp_path = bgp_path_node->data;
+  }
+
+  bgp_prefix = calloc(1, sizeof(struct bgp_prefix_));
+  memcpy(&bgp_prefix->prefix, &route->prefix, (route->prefix_length + 7) / 8);
+  bgp_prefix->prefix_length = route->prefix_length;
+  bgp_prefix->index = index;
+  bgp_prefix->afi = safi; /* There is confusion about AFI and SAFI in the codebase */
+
+  if (bgp_prefix->afi == AF_INET) {
+    bgp_prefix->pnode = ptree_add(bgp_prefix->prefix, bgp_prefix->prefix_length,
+				  bgp_prefix, peer_table[index].ipv4_root);
+  } else if (bgp_prefix->afi == AF_INET6) {
+    bgp_prefix->pnode = ptree_add(bgp_prefix->prefix, bgp_prefix->prefix_length,
+				  bgp_prefix, peer_table[index].ipv6_root);
+  }
+  CIRCLEQ_INSERT_TAIL(&bgp_path->path_qhead, bgp_prefix, prefix_qnode);
+  bgp_prefix->path = bgp_path;
+  bgp_path->refcount++;
+}
+
+void
 bgpdump_process_table_v2_rib_entry (int index, char **q,
                                     struct mrt_info *info,
                                     char *data_end)
@@ -786,6 +843,11 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
       if (brief || show || lookup || udiff || stats ||
           compat_mode || autsiz || heatmap)
         bgpdump_process_bgp_attributes (&route, p, p + attribute_length);
+
+      /*
+       * Add the prefix and the AS-path to the peer-RIB.
+       */
+      bgpdump_add_prefix(&route, index, p, attribute_length);
 
       /* Now all the BGP attributes for this rib_entry are processed. */
 
