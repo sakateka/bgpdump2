@@ -752,8 +752,8 @@ bgpdump_add_prefix (struct bgp_route *route, int index, char *raw_path, uint16_t
   }
 
   bgp_prefix = calloc(1, sizeof(struct bgp_prefix_));
-  //memcpy(&bgp_prefix->prefix, &route->prefix, (route->prefix_length + 7) / 8);
-  //bgp_prefix->prefix_length = route->prefix_length;
+  memcpy(&bgp_prefix->prefix, &route->prefix, (route->prefix_length + 7) / 8);
+  bgp_prefix->prefix_length = route->prefix_length;
   bgp_prefix->index = index;
   bgp_prefix->afi = safi; /* There is confusion about AFI and SAFI in the codebase */
 

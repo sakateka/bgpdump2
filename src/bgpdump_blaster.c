@@ -38,7 +38,9 @@ bgpdump_blaster (void)
     struct ptree *t;
     struct ptree_node *n;
     struct bgp_path_ *bgp_path;
-
+    struct bgp_prefix_ *bgp_prefix;
+    int prefixes;
+    
     for (index = 0; index < PEER_INDEX_MAX; index++) {
 	t = peer_table[index].path_root;
 	if (!t) {
@@ -50,7 +52,16 @@ bgpdump_blaster (void)
 	    if (!bgp_path) {
 		continue;
 	    }
-	    printf("path %p, refcount %u\n", bgp_path, bgp_path->refcount);
+	    printf("\npath %p, refcount %u", bgp_path, bgp_path->refcount);
+
+	    prefixes = 0;
+	    CIRCLEQ_FOREACH(bgp_prefix, &bgp_path->path_qhead, prefix_qnode) {
+		char pbuf[64];
+		inet_ntop (bgp_prefix->afi, bgp_prefix->prefix, pbuf, sizeof(pbuf));
+		printf ("%s%s/%d", prefixes % 8 ? ", " : "\n  ",
+			pbuf, bgp_prefix->prefix_length);
+		prefixes++;
+	    }
 	}
     }
 }
