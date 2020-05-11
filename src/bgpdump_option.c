@@ -22,9 +22,11 @@
 #include <getopt.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/queue.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include "ptree.h"
 #include "bgpdump_parse.h"
 #include "bgpdump_option.h"
 #include "bgpdump_peer.h"

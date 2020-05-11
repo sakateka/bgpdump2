@@ -27,6 +27,9 @@ struct peer
   uint32_t asnumber;
   uint64_t route_count;
   uint64_t route_count_by_plen[33];
+  struct ptree *ipv4_root;
+  struct ptree *ipv6_root;
+  struct ptree *path_root;
 };
 
 #define PEER_MAX 256

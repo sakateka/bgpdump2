@@ -66,6 +66,28 @@ struct __attribute__((__packed__)) bgp_route
     med_set:1;
 };
 
+struct __attribute__((__packed__)) bgp_path_
+{
+  struct ptree_node *pnode;
+  uint32_t refcount;
+  uint16_t path_length;
+  /* List of all prefixes per path */
+  CIRCLEQ_HEAD(bgp_path_head_, bgp_prefix_ ) path_qhead;
+};
+
+struct __attribute__((__packed__)) bgp_prefix_
+{
+  struct ptree_node *pnode;
+  char prefix[MAX_ADDR_LENGTH];
+  struct bgp_path_ *path;
+  uint8_t prefix_length;
+  uint8_t afi;
+  uint32_t index;
+
+  /* List of all prefixes per path */
+  CIRCLEQ_ENTRY(bgp_prefix_) prefix_qnode;
+};
+
 extern struct bgp_route *routes;
 extern int route_limit;
 extern int route_size;
