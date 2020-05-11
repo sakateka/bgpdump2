@@ -83,7 +83,6 @@ struct __attribute__((__packed__)) bgp_prefix_
   uint8_t prefix_length;
   uint8_t afi;
   uint32_t index;
-
   /* List of all prefixes per path */
   CIRCLEQ_ENTRY(bgp_prefix_) prefix_qnode;
 };
