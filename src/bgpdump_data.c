@@ -728,7 +728,6 @@ bgpdump_add_prefix (struct bgp_route *route, int index, char *raw_path, uint16_t
   struct bgp_path_ *bgp_path;
   struct ptree_node *bgp_path_node;
   struct bgp_prefix_ *bgp_prefix;
-  char *path = NULL;
 
   /*
    * Check first if the path-attributes are known.
@@ -741,17 +740,11 @@ bgpdump_add_prefix (struct bgp_route *route, int index, char *raw_path, uint16_t
       return;
     }
 
-    path = malloc(path_length);
-    if (!path) {
-      return;
-    }
-    memcpy(path, raw_path, path_length);
-
     bgp_path = calloc(1, sizeof(struct bgp_path_));
     if (!bgp_path) {
       return;
     }
-    bgp_path->pnode = ptree_add(path, path_length * 8, bgp_path, peer_table[index].path_root);
+    bgp_path->pnode = ptree_add(raw_path, path_length * 8, bgp_path, peer_table[index].path_root);
     bgp_path->path_length = path_length;
     CIRCLEQ_INIT(&bgp_path->path_qhead);
   } else {
@@ -759,16 +752,16 @@ bgpdump_add_prefix (struct bgp_route *route, int index, char *raw_path, uint16_t
   }
 
   bgp_prefix = calloc(1, sizeof(struct bgp_prefix_));
-  memcpy(&bgp_prefix->prefix, &route->prefix, (route->prefix_length + 7) / 8);
-  bgp_prefix->prefix_length = route->prefix_length;
+  //memcpy(&bgp_prefix->prefix, &route->prefix, (route->prefix_length + 7) / 8);
+  //bgp_prefix->prefix_length = route->prefix_length;
   bgp_prefix->index = index;
   bgp_prefix->afi = safi; /* There is confusion about AFI and SAFI in the codebase */
 
   if (bgp_prefix->afi == AF_INET) {
-    bgp_prefix->pnode = ptree_add(bgp_prefix->prefix, bgp_prefix->prefix_length,
+    bgp_prefix->pnode = ptree_add(route->prefix, route->prefix_length,
 				  bgp_prefix, peer_table[index].ipv4_root);
   } else if (bgp_prefix->afi == AF_INET6) {
-    bgp_prefix->pnode = ptree_add(bgp_prefix->prefix, bgp_prefix->prefix_length,
+    bgp_prefix->pnode = ptree_add(route->prefix, route->prefix_length,
 				  bgp_prefix, peer_table[index].ipv6_root);
   }
   CIRCLEQ_INSERT_TAIL(&bgp_path->path_qhead, bgp_prefix, prefix_qnode);

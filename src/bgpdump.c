@@ -47,6 +47,7 @@
 #include "bgpdump_peer.h"
 #include "bgpdump_peerstat.h"
 #include "bgpdump_json.h"
+#include "bgpdump_blaster.h"
 
 extern int optind;
 
@@ -687,6 +688,10 @@ main (int argc, char **argv)
 
   if (json_dump) {
       json_close_all();
+  }
+
+  if (blaster) {
+      bgpdump_blaster();
   }
 
   free (buf);

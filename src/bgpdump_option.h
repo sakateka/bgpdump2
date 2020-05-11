@@ -48,6 +48,8 @@ extern char json_ip[];
 extern int json_port;
 extern char *json_peergroup;
 extern int localpref;
+extern int blaster;
+extern char *blaster_addr;
 
 extern unsigned long long bufsiz;
 extern unsigned long long nroutes;
