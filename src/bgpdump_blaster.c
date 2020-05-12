@@ -34,30 +34,31 @@
 void
 bgpdump_blaster (void)
 {
-    int index;
+    int index, peer_index;
     struct ptree *t;
     struct ptree_node *n;
     struct bgp_path_ *bgp_path;
     struct bgp_prefix_ *bgp_prefix;
     int prefixes;
 
-    for (index = 0; index < PEER_INDEX_MAX; index++) {
-	t = peer_table[index].path_root;
+    for (index = 0; index < peer_spec_size; index++) {
+	peer_index = peer_spec_index[index];
+	t = peer_table[peer_index].path_root;
 	if (!t) {
 	    continue;
 	}
 
-	if (!peer_table[index].path_count) {
+	if (!peer_table[peer_index].path_count) {
 	    continue;
 	}
 
-	printf("\nRIB for index %d\n", index);
+	printf("\nRIB for index %d\n", peer_index);
 	printf("%u ipv4 prefixes, %u ipv6 prefixes, %u paths",
-	       peer_table[index].ipv4_count,
-	       peer_table[index].ipv6_count,
-	       peer_table[index].path_count);
+	       peer_table[peer_index].ipv4_count,
+	       peer_table[peer_index].ipv6_count,
+	       peer_table[peer_index].path_count);
 
-	for (n = ptree_head(t); n; n = ptree_next (n)) {
+	for (n = ptree_head(t); n; n = ptree_next(n)) {
 	    bgp_path = n->data;
 	    if (!bgp_path) {
 		continue;

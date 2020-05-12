@@ -847,9 +847,11 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
         bgpdump_process_bgp_attributes (&route, p, p + attribute_length);
 
       /*
-       * Add the prefix and the AS-path to the peer-RIB.
+       * For the blaster add the prefix and the path attributes to the peer-RIB.
        */
-      bgpdump_add_prefix(&route, peer_index, p, attribute_length);
+      if (blaster) {
+	bgpdump_add_prefix(&route, peer_index, p, attribute_length);
+      }
 
       /* Now all the BGP attributes for this rib_entry are processed. */
 
@@ -894,7 +896,7 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
         }
 #else
 
-      if (peer_spec_size)
+      if (peer_spec_size && !blaster)
         {
           struct bgp_route *rp;
           int *route_size = &peer_route_size[peer_spec_i];
