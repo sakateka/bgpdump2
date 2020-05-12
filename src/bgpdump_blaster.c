@@ -40,25 +40,35 @@ bgpdump_blaster (void)
     struct bgp_path_ *bgp_path;
     struct bgp_prefix_ *bgp_prefix;
     int prefixes;
-    
+
     for (index = 0; index < PEER_INDEX_MAX; index++) {
 	t = peer_table[index].path_root;
 	if (!t) {
 	    continue;
 	}
 
+	if (!peer_table[index].path_count) {
+	    continue;
+	}
+
+	printf("\nRIB for index %d\n", index);
+	printf("%u ipv4 prefixes, %u ipv6 prefixes, %u paths",
+	       peer_table[index].ipv4_count,
+	       peer_table[index].ipv6_count,
+	       peer_table[index].path_count);
+
 	for (n = ptree_head(t); n; n = ptree_next (n)) {
 	    bgp_path = n->data;
 	    if (!bgp_path) {
 		continue;
 	    }
-	    printf("\npath %p, refcount %u", bgp_path, bgp_path->refcount);
+	    printf("\n  path %p, refcount %u", bgp_path, bgp_path->refcount);
 
 	    prefixes = 0;
 	    CIRCLEQ_FOREACH(bgp_prefix, &bgp_path->path_qhead, prefix_qnode) {
 		char pbuf[64];
 		inet_ntop (bgp_prefix->afi, bgp_prefix->prefix, pbuf, sizeof(pbuf));
-		printf ("%s%s/%d", prefixes % 8 ? ", " : "\n  ",
+		printf ("%s%s/%d", prefixes % 8 ? ", " : "\n    ",
 			pbuf, bgp_prefix->prefix_length);
 		prefixes++;
 	    }

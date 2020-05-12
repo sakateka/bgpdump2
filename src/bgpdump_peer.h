@@ -30,6 +30,9 @@ struct peer
   struct ptree *ipv4_root;
   struct ptree *ipv6_root;
   struct ptree *path_root;
+  uint32_t ipv4_count;
+  uint32_t ipv6_count;
+  uint32_t path_count;
 };
 
 #define PEER_MAX 256

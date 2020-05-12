@@ -745,6 +745,9 @@ bgpdump_add_prefix (struct bgp_route *route, int index, char *raw_path, uint16_t
       return;
     }
     bgp_path->pnode = ptree_add(raw_path, path_length * 8, bgp_path, peer_table[index].path_root);
+    if (bgp_path->pnode) {
+      peer_table[index].path_count++;
+    }
     bgp_path->path_length = path_length;
     CIRCLEQ_INIT(&bgp_path->path_qhead);
   } else {
@@ -760,9 +763,15 @@ bgpdump_add_prefix (struct bgp_route *route, int index, char *raw_path, uint16_t
   if (bgp_prefix->afi == AF_INET) {
     bgp_prefix->pnode = ptree_add(route->prefix, route->prefix_length,
 				  bgp_prefix, peer_table[index].ipv4_root);
+    if (bgp_prefix->pnode) {
+      peer_table[index].ipv4_count++;
+    }
   } else if (bgp_prefix->afi == AF_INET6) {
     bgp_prefix->pnode = ptree_add(route->prefix, route->prefix_length,
 				  bgp_prefix, peer_table[index].ipv6_root);
+    if (bgp_prefix->pnode) {
+      peer_table[index].ipv6_count++;
+    }
   }
   CIRCLEQ_INSERT_TAIL(&bgp_path->path_qhead, bgp_prefix, prefix_qnode);
   bgp_prefix->path = bgp_path;
@@ -840,7 +849,7 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
       /*
        * Add the prefix and the AS-path to the peer-RIB.
        */
-      bgpdump_add_prefix(&route, index, p, attribute_length);
+      bgpdump_add_prefix(&route, peer_index, p, attribute_length);
 
       /* Now all the BGP attributes for this rib_entry are processed. */
 
