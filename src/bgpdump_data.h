@@ -70,6 +70,9 @@ extern uint16_t mrt_subtype;
 extern uint32_t mrt_length;
 
 void
+bgpdump_process_bgp_attributes (struct bgp_route *, char *, char *);
+
+void
 bgpdump_process_mrt_header (struct mrt_header *h, struct mrt_info *info);
 
 void
