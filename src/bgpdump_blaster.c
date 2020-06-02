@@ -39,6 +39,7 @@ bgpdump_blaster (void)
     struct ptree_node *n;
     struct bgp_path_ *bgp_path;
     struct bgp_prefix_ *bgp_prefix;
+    struct bgp_route route;
     int prefixes;
 
     for (index = 0; index < peer_spec_size; index++) {
@@ -52,7 +53,7 @@ bgpdump_blaster (void)
 	    continue;
 	}
 
-	printf("\nRIB for index %d\n", peer_index);
+	printf("\nRIB for peer-index %d\n", peer_index);
 	printf("%u ipv4 prefixes, %u ipv6 prefixes, %u paths",
 	       peer_table[peer_index].ipv4_count,
 	       peer_table[peer_index].ipv6_count,
@@ -63,14 +64,26 @@ bgpdump_blaster (void)
 	    if (!bgp_path) {
 		continue;
 	    }
-	    printf("\n  path %p, refcount %u", bgp_path, bgp_path->refcount);
+
+	    printf("\n path %p, length %u, refcount %u\n",
+		   bgp_path,
+		   bgp_path->path_length,
+		   bgp_path->refcount);
+
+	    memset (&route, 0, sizeof(route));
+	    bgpdump_process_bgp_attributes(&route, n->key, n->key + bgp_path->path_length);
 
 	    prefixes = 0;
 	    CIRCLEQ_FOREACH(bgp_prefix, &bgp_path->path_qhead, prefix_qnode) {
 		char pbuf[64];
 		inet_ntop (bgp_prefix->afi, bgp_prefix->prefix, pbuf, sizeof(pbuf));
-		printf ("%s%s/%d", prefixes % 8 ? ", " : "\n    ",
-			pbuf, bgp_prefix->prefix_length);
+		if (prefixes == 0) {
+		    printf ("%s%s/%d", (prefixes % 8) ? ", " : "  ",
+			    pbuf, bgp_prefix->prefix_length);
+		} else {
+		    printf ("%s%s/%d", (prefixes % 8) ? ", " : "\n  ",
+			    pbuf, bgp_prefix->prefix_length);
+		}
 		prefixes++;
 	    }
 	}

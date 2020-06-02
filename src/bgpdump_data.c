@@ -404,11 +404,11 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
       attribute_type = ntohs (*(uint16_t *)p);
       p += size;
 
-      snprintf (attr_flags, sizeof(attr_flags), "%s,%s,%s,%s",
+      snprintf (attr_flags, sizeof(attr_flags), "%s, %s, %s%s",
         (attribute_type & OPTIONAL ?  "optional" : "well-known"),
         (attribute_type & TRANSITIVE ?  "transitive" : "non-transitive"),
         (attribute_type & PARTIAL ?  "partial" : "complete"),
-        (attribute_type & EXTENDED_LENGTH ?  "len-1byte" : "len-2bytes"));
+        (attribute_type & EXTENDED_LENGTH ?  ", extended-length" : ""));
 
       switch (attribute_type & TYPE_CODE)
         {
@@ -487,7 +487,7 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
               r++;
 
               if (show && detail)
-                printf ("  as_path[%s:%d]:",
+                printf ("    as_path[%s:%d]:",
                         (type == 1 ? "set" : "seq"), path_size);
 
               route->path_size = path_size;
@@ -553,19 +553,19 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
             {
               char buf[32];
               inet_ntop (safi, route->nexthop, buf, sizeof (buf));
-              printf ("  nexthop: %s\n", buf);
+              printf ("    nexthop: %s\n", buf);
             }
           break;
 
         case ORIGIN:
           if (show && detail)
-            printf ("  origin: %d\n", (int) *p);
+            printf ("    origin: %d\n", (int) *p);
           route->origin = (uint8_t) *p;
           break;
 
         case ATOMIC_AGGREGATE:
           if (show && detail)
-            printf ("  atomic_aggregate: len: %d\n", attribute_length);
+            printf ("    atomic_aggregate: len: %d\n", attribute_length);
           route->atomic_aggregate++;
           break;
 
@@ -573,14 +573,14 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
 	  route->localpref_set = 1;
           route->localpref = ntohl (*(uint32_t *)p);
           if (show && detail)
-            printf ("  local-pref: %u\n", (uint32_t) route->localpref);
+            printf ("    local-pref: %u\n", (uint32_t) route->localpref);
           break;
 
         case MULTI_EXIT_DISC:
 	  route->med_set = 1;
           route->med = ntohl (*(uint32_t *)p);
           if (show && detail)
-            printf ("  med: %u\n", (uint32_t) route->med);
+            printf ("    med: %u\n", (uint32_t) route->med);
           break;
 
         case COMMUNITY:
@@ -597,7 +597,7 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
 
 	      if (show && detail) {
 		printf ("%s %u:%u",
-			idx ? "," : "  community:",
+			idx ? "," : "    community:",
 			route->community[idx] >> 16,
 			route->community[idx] & 0xffff);
 	      }
@@ -622,7 +622,7 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
 
 	      if (show && detail) {
 		printf ("%s %s",
-			idx ? "," : "  extended-community:",
+			idx ? "," : "    extended-community:",
 			bgpdump_print_extd_comm(&route->extd_community[idx]));
 	      }
 	    }
@@ -649,7 +649,7 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
 
 	      if (show && detail) {
 		printf ("%s %u:%u:%u",
-			idx ? "," : "  large-community:",
+			idx ? "," : "    large-community:",
 			route->large_community[idx].global,
 			route->large_community[idx].local1,
 			route->large_community[idx].local2);
@@ -707,7 +707,7 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
                 char buf[64], buf2[64];
                 inet_ntop (AF_INET6, route->nexthop, buf2, sizeof (buf2));
                 inet_ntop (AF_INET6, nlri_prefix, buf, sizeof (buf));
-                printf ("  mp_reach_nlri: (afi/safi: %d/%d) %s(size:%d) %s/%d\n",
+                printf ("    mp_reach_nlri: (afi/safi: %d/%d) %s(size:%d) %s/%d\n",
                         afi, safi, buf2, len, buf, nlri_plen);
               }
           }
@@ -842,9 +842,10 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
       memcpy (route.prefix, prefix, (prefix_length + 7) / 8);
       route.prefix_length = prefix_length;
 
-      if (brief || show || lookup || udiff || stats ||
-          compat_mode || autsiz || heatmap)
+      if ((brief || show || lookup || udiff || stats ||
+	   compat_mode || autsiz || heatmap) && !blaster) {
         bgpdump_process_bgp_attributes (&route, p, p + attribute_length);
+      }
 
       /*
        * For the blaster add the prefix and the path attributes to the peer-RIB.
