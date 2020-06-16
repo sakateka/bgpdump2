@@ -14,6 +14,7 @@ void bgpdump_blaster(void);
 #define BGP_TCP_PORT 179
 #define BGP_READBUFSIZE  65536
 #define BGP_WRITEBUFSIZE 65536
+#define BGP_MAX_MESSAGE_SIZE 4096
 
 #define BGP_MSG_OPEN         1
 #define BGP_MSG_UPDATE       2
@@ -45,15 +46,16 @@ struct __attribute__((__packed__)) bgp_session_
 {
     int sockfd;
     state_t state;
-    //    struct ptree_node *pnode;
     struct sockaddr_in sockaddr_in; /* XXX v6 */
 
     struct timer_ *connect_timer;
     struct timer_ *open_sent_timer;
     struct timer_ *keepalive_timer;
     struct timer_ *hold_timer;
+    struct timer_ *close_timer;
 
     /* write buffer */
+    struct timer_ *write_job;
     u_char *write_buf;
     uint write_idx;
 
@@ -62,6 +64,13 @@ struct __attribute__((__packed__)) bgp_session_
     u_char *read_buf;
     u_char *read_buf_start;
     u_char *read_buf_end;
+
+    /*
+     * Cursor for the async ribwalk.
+     */
+    struct ptree_node *ribwalk_pnode;
+    int ribwalk_peer_index;
+    int ribwalk_prefix_index;
 };
 
 #endif /* __BGPDUMP_BLASTER_H__ */
