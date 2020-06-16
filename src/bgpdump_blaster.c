@@ -36,6 +36,8 @@ CIRCLEQ_HEAD(timer_head_, timer_ ) timer_qhead; /* Timer root */
 
 /* Prototypes */
 void bgpdump_connect_session_cb(struct timer_ *);
+void bgpdump_rebase_read_buffer(struct bgp_session_ *);
+void bgpdump_read_cb(struct timer_ *);
 
 /*
  * Flush the write buffer.
@@ -55,9 +57,7 @@ bgpdump_fflush (struct bgp_session_ *session)
      * Blocked ?
      */
     if (res == -1) {
-
         switch (errno) {
-
         case EAGAIN:
 	    break;
 
@@ -114,6 +114,28 @@ write_be_uint (u_char *data, uint length, unsigned long long value)
 }
 
 /*
+ * Quick'n dirty big endian reader.
+ */
+unsigned long long __attribute__ ((noinline))
+read_be_uint (u_char *data, uint length)
+{
+    uint idx;
+    unsigned long long value;
+
+    if (!length || length > 8) {
+	return 0;
+    }
+
+    value = 0;
+    for (idx = 0; idx < length; idx++) {
+	value <<= 8;
+	value = value | *(data+idx);
+    }
+
+    return value;
+}
+
+/*
  * Push data to the write buffer and update the cursor.
  */
 void
@@ -163,6 +185,28 @@ push_as4_capability (struct bgp_session_ *session)
     write_be_uint(session->write_buf+cap_idx-1, 1, length); /* overwrite Cap length */
 }
 
+/*
+ * Write a BGP keepalive message.
+ */
+void
+push_keepalive_message (struct bgp_session_ *session)
+{
+    uint keepalive_start_idx, length;
+
+    keepalive_start_idx = session->write_idx;
+
+    push_be_uint(session, 8, 0xffffffffffffffff); /* marker */
+    push_be_uint(session, 8, 0xffffffffffffffff); /* marker */
+
+    push_be_uint(session, 2, 0); /* length */
+    push_be_uint(session, 1, BGP_MSG_KEEPALIVE); /* message type */
+
+    /*
+     * Calculate Message length field.
+     */
+    length = session->write_idx - keepalive_start_idx;
+    write_be_uint(session->write_buf+keepalive_start_idx+16, 2, length); /* overwrite message length */
+}
 
 /*
  * Write a BGP open message.
@@ -178,7 +222,7 @@ push_open_message (struct bgp_session_ *session)
     push_be_uint(session, 8, 0xffffffffffffffff); /* marker */
 
     push_be_uint(session, 2, 0); /* length */
-    push_be_uint(session, 1, 1); /* open message type */
+    push_be_uint(session, 1, BGP_MSG_OPEN); /* message type */
 
     push_be_uint(session, 1, 4); /* version 4 */
     push_be_uint(session, 2, 23456); /* my AS */
@@ -205,6 +249,24 @@ push_open_message (struct bgp_session_ *session)
      */
     length = session->write_idx - open_start_idx;
     write_be_uint(session->write_buf+open_start_idx+16, 2, length); /* overwrite message length */
+}
+
+void
+timer_del (struct timer_ **pptr)
+{
+    struct timer_ *timer;
+
+    timer = *pptr;
+    if (!timer) {
+	return;
+    }
+
+    printf("Delete %s timer\n", timer->name);
+
+    CIRCLEQ_REMOVE(&timer_qhead, timer, timer_qnode);
+    free(timer);
+
+    *pptr = NULL;
 }
 
 /*
@@ -243,7 +305,7 @@ timer_add (char *name, time_t sec, long nsec, void *data, void (*cb))
     }
 
     CIRCLEQ_INSERT_TAIL(&timer_qhead, timer, timer_qnode);
-    printf("Add %s timer, expire in %lu.%lu\n", timer->name, sec, nsec);
+    printf("Add %s timer, expire in %lus %luns\n", timer->name, sec, nsec);
 
     return timer;
 }
@@ -391,8 +453,32 @@ bgpdump_close_session_cb (struct timer_ *timer)
     /*
      * Try to re-establish in 5s.
      */
-    timer_add("connect_retry", 5, 0, session, &bgpdump_connect_session_cb);
+    session->connect_timer = timer_add("connect_retry", 5, 0, session, &bgpdump_connect_session_cb);
 }
+
+/*
+ * Send an keepalive message.
+ */
+void
+bgpdump_send_keepalive_cb (struct timer_ *timer)
+{
+    struct bgp_session_ *session;
+
+    session = (struct bgp_session_ *)timer->data;
+
+    push_keepalive_message(session);
+    bgpdump_fflush(session);
+
+    /*
+     * Reschedule the keepalive timer.
+     */
+    if (session->state == ESTABLISHED) {
+	session->keepalive_timer = timer_add("keepalive", 30, 0, session, bgpdump_send_keepalive_cb);
+    } else {
+	session->keepalive_timer = NULL;
+    }
+}
+
 
 /*
  * Socket is writable. Lets send an open message.
@@ -403,7 +489,6 @@ bgpdump_send_open_cb (struct timer_ *timer)
     struct bgp_session_ *session;
 
     session = (struct bgp_session_ *)timer->data;
-    session->state = OPENSENT;
 
     push_open_message(session);
     bgpdump_fflush(session);
@@ -413,6 +498,12 @@ bgpdump_send_open_cb (struct timer_ *timer)
      * Once an open message is received this timer needs to be stopped.
      */
     session->open_sent_timer = timer_add("open_sent", 10, 0, session, &bgpdump_close_session_cb);
+    session->state = OPENSENT;
+
+    /*
+     * Start the read job.
+     */
+    session->read_job = timer_add("read_job", 0, 0, session, bgpdump_read_cb);
 }
 
 void
@@ -457,11 +548,6 @@ bgpdump_connect_session_cb (struct timer_ *timer)
     session->sockaddr_in.sin_family = AF_INET;
     session->sockaddr_in.sin_port = htons(BGP_TCP_PORT);
 
-    /*
-     * Record last connect attempt timestamp.
-     */
-    clock_gettime(CLOCK_MONOTONIC, &session->last_connect_attempt);
-
     /* Do the actual connection. */
     if (connect(session->sockfd, (struct sockaddr*)&session->sockaddr_in, sizeof(session->sockaddr_in)) < 0) {
 
@@ -495,7 +581,7 @@ bgpdump_connect_session_cb (struct timer_ *timer)
 			fprintf(stderr, "Error in getsockopt() %d - %s\n", errno, strerror(errno));
 			exit(0);
 		    }
-		    // Check the value returned...
+		    /* Check the return value */
 		    if (valopt) {
 			fprintf(stderr, "Error in delayed connection() %d - %s\n", valopt, strerror(valopt));
 			exit(0);
@@ -532,6 +618,140 @@ bgpdump_connect_session_cb (struct timer_ *timer)
     }
 }
 
+/*
+ * Read and process the BGP message stream until no full BGP message can get consumed.
+ */
+void
+bgpdump_read (struct bgp_session_ *session)
+{
+    uint size, length, type;
+
+    while (1) {
+	size = session->read_buf_end - session->read_buf_start;
+
+	/* Minimum message size */
+	if (size < 19) {
+	    break;
+	}
+
+	/* Full message on the wire to consume ? */
+	length = read_be_uint(session->read_buf_start+16, 2);
+	type = *(session->read_buf_start+18);
+	if (length > size) {
+	    break;
+	}
+
+	printf("Read message type %u, length %u\n", type, length);
+
+	switch (type) {
+	case BGP_MSG_OPEN:
+	    /* stop timer */
+	    timer_del(&session->open_sent_timer);
+	    session->state = OPENCONFIRM;
+	    session->keepalive_timer = timer_add("keepalive", 30, 0, session, bgpdump_send_keepalive_cb);
+	    break;
+
+	case BGP_MSG_NOTIFICATION:
+	    /* restart session */
+	    timer_add("restart_session", 0, 0, session, &bgpdump_close_session_cb);
+
+	    timer_del(&session->open_sent_timer);
+	    timer_del(&session->keepalive_timer);
+	    timer_del(&session->connect_timer);
+	    break;
+
+	case BGP_MSG_KEEPALIVE:
+	    timer_del(&session->hold_timer);
+	    session->hold_timer = timer_add("holdtime", 90, 0, session, &bgpdump_close_session_cb);
+	    session->state = ESTABLISHED;
+	    /* reset hold timer */
+	    break;
+
+	case BGP_MSG_UPDATE:
+	    /* ignore */
+	    break;
+
+	default:
+	    break;
+	}
+
+	/*
+	 * Progress pointer to next BGP message.
+	 */
+	session->read_buf_start += length;
+    }
+
+    bgpdump_rebase_read_buffer(session);
+}
+
+void
+bgpdump_read_cb (struct timer_ *timer)
+{
+    struct bgp_session_ *session;
+    uint space_left, res;
+
+    session = (struct bgp_session_ *)timer->data;
+
+    /*
+     * Start the read loop.
+     */
+    for (space_left = BGP_READBUFSIZE; space_left; ) {
+
+        space_left = (session->read_buf + BGP_READBUFSIZE) - session->read_buf_end;
+	res = read(session->sockfd, session->read_buf_end, space_left);
+
+	/*
+	 * Blocked ?
+	 */
+	if (res == -1) {
+
+	    switch (errno) {
+	    case EAGAIN:
+		break;
+
+	    default:
+		printf("  read() error %s\n", strerror(errno));
+		break;
+	    }
+
+	    /* Re-schedule read job*/
+	    session->read_job = timer_add("read_job", 1, 0, session, bgpdump_read_cb);
+	    break;
+	}
+
+	session->read_buf_end += res;
+	bgpdump_read(session);
+    }
+}
+
+/*
+ * When there is only little data left and
+ * the buffer start is close to buffer end,
+ * then 'rebase' the buffer by copying
+ * the tail data to the buffer head.
+ */
+void
+bgpdump_rebase_read_buffer (struct bgp_session_ *session)
+{
+    int size;
+
+    /*
+     * As per the comparison below a buffersize
+     * of 64K and a divisor of 16 ensures that we
+     * always can read a full BGP message of 4K.
+     */
+    if ((session->read_buf_start - session->read_buf) > (BGP_READBUFSIZE / 16)) {
+
+        /*
+         * Copy what is left to the buffer start.
+         */
+        size = session->read_buf_end - session->read_buf_start;
+        memcpy(session->read_buf, session->read_buf_start, size);
+        session->read_buf_start = session->read_buf;
+        session->read_buf_end = session->read_buf + size;
+    }
+}
+
 void
 bgpdump_blaster (void)
 {
@@ -548,6 +768,13 @@ bgpdump_blaster (void)
     if (!session) {
 	return;
     }
+
+    session->read_buf = calloc(1, BGP_READBUFSIZE);
+    if (!session->read_buf) {
+	return;
+    }
+    session->read_buf_start = session->read_buf;
+    session->read_buf_end = session->read_buf;
 
     session->write_buf = calloc(1, BGP_WRITEBUFSIZE);
     if (!session->write_buf) {
@@ -572,7 +799,7 @@ bgpdump_blaster (void)
      */
     timer_walk();
 
-# if 0
+# if 1
     for (index = 0; index < peer_spec_size; index++) {
 	peer_index = peer_spec_index[index];
 	t = peer_table[peer_index].path_root;

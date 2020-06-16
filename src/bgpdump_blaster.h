@@ -12,7 +12,15 @@
 void bgpdump_blaster(void);
 
 #define BGP_TCP_PORT 179
+#define BGP_READBUFSIZE  65536
 #define BGP_WRITEBUFSIZE 65536
+
+#define BGP_MSG_OPEN         1
+#define BGP_MSG_UPDATE       2
+#define BGP_MSG_NOTIFICATION 3
+#define BGP_MSG_KEEPALIVE    4
+
+#define MSEC 1000*1000 /* 1 million nanoseconds */
 
 typedef enum
 {
@@ -39,15 +47,21 @@ struct __attribute__((__packed__)) bgp_session_
     state_t state;
     //    struct ptree_node *pnode;
     struct sockaddr_in sockaddr_in; /* XXX v6 */
-    struct timer_ *open_sent_timer;
 
-    struct timespec last_connect_attempt;
-    struct timespec last_keepalive_sent;
-    struct timespec last_keepalive_received;
+    struct timer_ *connect_timer;
+    struct timer_ *open_sent_timer;
+    struct timer_ *keepalive_timer;
+    struct timer_ *hold_timer;
 
     /* write buffer */
     u_char *write_buf;
     uint write_idx;
+
+    /* read buffer */
+    struct timer_ *read_job;
+    u_char *read_buf;
+    u_char *read_buf_start;
+    u_char *read_buf_end;
 };
 
 #endif /* __BGPDUMP_BLASTER_H__ */
