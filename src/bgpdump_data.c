@@ -724,6 +724,40 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
 }
 
 void
+bgpdump_rewrite_nh (char *raw_path, uint16_t path_length)
+{
+  uint8_t pa_flags, pa_type;
+  uint16_t pa_length;
+  char *pa;
+
+  pa = raw_path;
+  while (pa < (raw_path + path_length)) {
+    pa_flags = *pa;
+    pa_type = *(pa+1);
+    pa += 2;
+    if (pa_flags & 0x10) { /* extended length ? */
+      pa_length = *pa << 8 | *(pa+1);
+      pa += 2;
+    } else {
+      pa_length = *pa;
+      pa++;
+    }
+
+    switch (pa_type) {
+    case 3: /* next hop */
+      *pa = nhs_addr.s_addr;
+      *(pa+1) = nhs_addr.s_addr >> 8;
+      *(pa+2) = nhs_addr.s_addr >> 16;
+      *(pa+3) = nhs_addr.s_addr >> 24;;
+      return;
+    default:
+      break;
+    }
+    pa += pa_length;
+  }
+}
+
+void
 bgpdump_add_prefix (struct bgp_route *route, int index, char *raw_path, uint16_t path_length)
 {
   struct bgp_path_ *bgp_path;
@@ -854,6 +888,11 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
        * For the blaster add the prefix and the path attributes to the peer-RIB.
        */
       if (blaster) {
+
+	/* next hop rewrite ? */
+	if (nhs) {
+	  bgpdump_rewrite_nh(p, attribute_length);
+	}
 	bgpdump_add_prefix(&route, peer_index, p, attribute_length);
       }
 
