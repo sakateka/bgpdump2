@@ -13,6 +13,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <errno.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/uio.h>
@@ -46,13 +47,13 @@ struct timer_ *timer_add (char *, time_t, long, void *, void (*));
 /*
  * Flush the write buffer.
  */
-void
+int
 bgpdump_fflush (struct bgp_session_ *session)
 {
     int res;
 
     if (!session->write_idx) {
-        return;
+        return 0;
     }
 
     res = write(session->sockfd, session->write_buf, session->write_idx);
@@ -62,16 +63,17 @@ bgpdump_fflush (struct bgp_session_ *session)
      */
     if (res == -1) {
         switch (errno) {
-#if 0
         case EAGAIN:
 	    break;
-#endif
+
+	case EPIPE:
+	    return 0;
 
         default:
 	    printf("write(): error %s (%d)\n", strerror(errno), errno);
 	    break;
         }
-	return;
+	return 1;
     }
 
     /*
@@ -81,7 +83,7 @@ bgpdump_fflush (struct bgp_session_ *session)
 	fprintf(stderr, "Full write %u bytes buffer to %s\n",
 		res, blaster_addr);
 	session->write_idx = 0;
-	return;
+	return 1;
     }
 
     /*
@@ -95,9 +97,12 @@ bgpdump_fflush (struct bgp_session_ *session)
 	/*
 	 * Rebase the buffer.
 	 */
-	memcpy(session->write_buf, session->write_buf+res, session->write_idx - res);
+	memmove(session->write_buf, session->write_buf+res, session->write_idx - res);
 	session->write_idx -= res;
+	return 1;
     }
+
+    return 0;
 }
 
 void
@@ -121,6 +126,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
     struct bgp_session_ *session;
     struct bgp_path_ *bgp_path;
     struct bgp_prefix_ *prefix;
+    struct bgp_route route;
     struct ptree *t;
     int peer_index, prefix_index;
     uint update_start_idx, length;
@@ -135,13 +141,25 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 
 	    /* Next RIB */
 	    session->ribwalk_peer_index++;
+	    session->ribwalk_pnode = NULL;
+	    session->ribwalk_prefix_index = 0;
 
 	    /* re-schedule */
 	    session->write_job = timer_add("write_job", 1, 0, session, bgpdump_ribwalk_cb);
 	    return;
 	}
 
+	printf("RIB for peer-index %d\n", peer_index);
+	printf("%u ipv4 prefixes, %u ipv6 prefixes, %u paths\n",
+	       peer_table[peer_index].ipv4_count,
+	       peer_table[peer_index].ipv6_count,
+	       peer_table[peer_index].path_count);
+
 	session->ribwalk_pnode = ptree_head(t);
+    }
+
+    if (session->write_idx > (BGP_WRITEBUFSIZE - BGP_MAX_MESSAGE_SIZE)) {
+	printf("Write buffer full\n");
     }
 
     /*
@@ -163,9 +181,17 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    session->ribwalk_pnode = ptree_next(session->ribwalk_pnode);
 	    session->ribwalk_prefix_index = 0;
 	    if (!session->ribwalk_pnode) {
+		printf("End-of-RIB\n");
 		return; /* We're done - Send EOR */
 	    }
 	    continue;
+	}
+
+	if (session->ribwalk_prefix_index &&
+	    (session->ribwalk_prefix_index < bgp_path->refcount)) {
+	    printf("Resuming encoding %u/%u prefixes\n",
+		   bgp_path->refcount - session->ribwalk_prefix_index,
+		   bgp_path->refcount);
 	}
 
 	/*
@@ -188,6 +214,15 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	       bgp_path->path_length);
 	session->write_idx += bgp_path->path_length;
 
+	printf("Encode path_id %u, length %u, refcount %u\n",
+	       bgp_path->path_id, bgp_path->path_length, bgp_path->refcount);
+
+	show = 1;
+	debug = 1;
+	memset(&route, 0, sizeof(route));
+	bgpdump_process_bgp_attributes(&route, session->ribwalk_pnode->key,
+				       session->ribwalk_pnode->key + bgp_path->path_length);
+
 	/* prefixes */
 	prefix_index = 0;
 	CIRCLEQ_FOREACH(prefix, &bgp_path->path_qhead, prefix_qnode) {
@@ -203,6 +238,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	     * If there is not enough space for at least one full prefix then bail.
 	     */
 	    if (session->write_idx - update_start_idx >= (BGP_MAX_MESSAGE_SIZE - 5)) {
+		printf("Update full, encoded %u prefixes\n", prefix_index);
 		break;
 	    }
 	}
@@ -218,12 +254,13 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
     /*
      * Start the write loop.
      */
-    bgpdump_fflush(session);
+    if (bgpdump_fflush(session)) {
 
-    /*
-     * Re-schedule.
-     */
-    session->write_job = timer_add("write_job", 0, 500 * MSEC, session, bgpdump_ribwalk_cb);
+	/*
+	 * Re-schedule.
+	 */
+	session->write_job = timer_add("write_job", 0, 500 * MSEC, session, bgpdump_ribwalk_cb);
+    }
 }
 
 /*
@@ -589,24 +626,6 @@ timer_walk (void)
 }
 
 void
-bgpdump_test1_cb (struct timer_ *timer)
-{
-    printf("Test 1 CB, timer %p\n", timer);
-}
-
-void
-bgpdump_test2_cb (struct timer_ *timer)
-{
-    printf("Test 2 CB, timer %p\n", timer);
-}
-
-void
-bgpdump_test3_cb (struct timer_ *timer)
-{
-    printf("Test 3 CB, timer %p\n", timer);
-}
-
-void
 bgpdump_close_session_cb (struct timer_ *timer)
 {
     struct bgp_session_ *session;
@@ -957,14 +976,7 @@ bgpdump_rebase_read_buffer (struct bgp_session_ *session)
 void
 bgpdump_blaster (void)
 {
-    int index, peer_index;
-    struct ptree *t;
-    struct ptree_node *n;
-    struct bgp_path_ *bgp_path;
-    struct bgp_prefix_ *bgp_prefix;
-    struct bgp_route route;
     struct bgp_session_ *session;
-    int prefixes;
 
     session = calloc(1, sizeof(struct bgp_session_));
     if (!session) {
@@ -990,63 +1002,14 @@ bgpdump_blaster (void)
      */
     timer_add("connect_retry", 0, 0, session, &bgpdump_connect_session_cb);
 
-#if 0
-    timer_add(10, 0, session, &bgpdump_test1_cb);
-    timer_add(20, 0, session, &bgpdump_test2_cb);
-    timer_add(50, 0, session, &bgpdump_test3_cb);
-#endif
+    /*
+     * Block SIGPIPE. This happens when a session disconnects.
+     * We handle EPIPE when writing the buffer.
+     */
+    signal(SIGPIPE, SIG_IGN);
 
     /*
      * Process the timer queue.
      */
     timer_walk();
-
-# if 0
-    for (index = 0; index < peer_spec_size; index++) {
-	peer_index = peer_spec_index[index];
-	t = peer_table[peer_index].path_root;
-	if (!t) {
-	    continue;
-	}
-
-	if (!peer_table[peer_index].path_count) {
-	    continue;
-	}
-
-	printf("\nRIB for peer-index %d\n", peer_index);
-	printf("%u ipv4 prefixes, %u ipv6 prefixes, %u paths",
-	       peer_table[peer_index].ipv4_count,
-	       peer_table[peer_index].ipv6_count,
-	       peer_table[peer_index].path_count);
-
-	for (n = ptree_head(t); n; n = ptree_next(n)) {
-	    bgp_path = n->data;
-	    if (!bgp_path) {
-		continue;
-	    }
-
-	    printf("\n path %p, length %u, refcount %u\n",
-		   bgp_path,
-		   bgp_path->path_length,
-		   bgp_path->refcount);
-
-	    memset(&route, 0, sizeof(route));
-	    bgpdump_process_bgp_attributes(&route, n->key, n->key + bgp_path->path_length);
-
-	    prefixes = 0;
-	    CIRCLEQ_FOREACH(bgp_prefix, &bgp_path->path_qhead, prefix_qnode) {
-		char pbuf[64];
-		inet_ntop (bgp_prefix->afi, bgp_prefix->prefix, pbuf, sizeof(pbuf));
-		if (prefixes == 0) {
-		    printf ("%s%s/%d", (prefixes % 8) ? ", " : "  ",
-			    pbuf, bgp_prefix->prefix_length);
-		} else {
-		    printf ("%s%s/%d", (prefixes % 8) ? ", " : "\n  ",
-			    pbuf, bgp_prefix->prefix_length);
-		}
-		prefixes++;
-	    }
-	}
-    }
-#endif
 }

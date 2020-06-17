@@ -57,6 +57,7 @@ uint32_t sequence_number;
 uint16_t peer_index;
 char prefix[16];
 uint8_t prefix_length;
+uint32_t path_id = 0;
 
 void
 bgpdump_process_mrt_header (struct mrt_header *h, struct mrt_info *info)
@@ -750,6 +751,8 @@ bgpdump_add_prefix (struct bgp_route *route, int index, char *raw_path, uint16_t
     }
     bgp_path->path_length = path_length;
     CIRCLEQ_INIT(&bgp_path->path_qhead);
+    bgp_path->path_id = path_id;
+    path_id++;
   } else {
     bgp_path = bgp_path_node->data;
   }
