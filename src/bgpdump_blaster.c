@@ -6,6 +6,7 @@
  * Copyright (C) 2015-2020, RtBrick, Inc.
  */
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -80,8 +81,7 @@ bgpdump_fflush (struct bgp_session_ *session)
      * Full write ?
      */
     if (res == (int)session->write_idx) {
-	fprintf(stderr, "Full write %u bytes buffer to %s\n",
-		res, blaster_addr);
+	printf("Full write %u bytes buffer to %s\n", res, blaster_addr);
 	session->write_idx = 0;
 	return 1;
     }
@@ -91,8 +91,7 @@ bgpdump_fflush (struct bgp_session_ *session)
      */
     if (res && res < (int)session->write_idx) {
 
-	fprintf(stderr, "Partial write %u bytes buffer to %s\n",
-		res, blaster_addr);
+	printf("Partial write %u bytes buffer to %s\n", res, blaster_addr);
 
 	/*
 	 * Rebase the buffer.
@@ -133,6 +132,10 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 
     session = (struct bgp_session_ *)timer->data;
 
+    if (session->ribwalk_complete) {
+	return;
+    }
+
     if (!session->ribwalk_pnode) {
 	peer_index = peer_spec_index[session->ribwalk_peer_index];
 
@@ -140,7 +143,12 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	if (!t || !peer_table[peer_index].path_count) {
 
 	    /* Next RIB */
-	    session->ribwalk_peer_index++;
+	    if (session->ribwalk_peer_index < peer_spec_size) {
+		session->ribwalk_peer_index++;
+	    } else {
+		session->ribwalk_complete = true;
+		return;
+	    }
 	    session->ribwalk_pnode = NULL;
 	    session->ribwalk_prefix_index = 0;
 
@@ -182,6 +190,11 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    session->ribwalk_prefix_index = 0;
 	    if (!session->ribwalk_pnode) {
 		printf("End-of-RIB\n");
+		if (session->ribwalk_peer_index < peer_spec_size) {
+		    session->ribwalk_peer_index++;
+		} else {
+		    session->ribwalk_complete = true;
+		}
 		return; /* We're done - Send EOR */
 	    }
 	    continue;
@@ -214,14 +227,16 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	       bgp_path->path_length);
 	session->write_idx += bgp_path->path_length;
 
+	memset(&route, 0, sizeof(route));
+#if 0
 	printf("Encode path_id %u, length %u, refcount %u\n",
 	       bgp_path->path_id, bgp_path->path_length, bgp_path->refcount);
 
 	show = 1;
-	debug = 1;
-	memset(&route, 0, sizeof(route));
+	detail = 1;
 	bgpdump_process_bgp_attributes(&route, session->ribwalk_pnode->key,
 				       session->ribwalk_pnode->key + bgp_path->path_length);
+#endif
 
 	/* prefixes */
 	prefix_index = 0;
@@ -361,6 +376,13 @@ push_keepalive_message (struct bgp_session_ *session)
 {
     uint keepalive_start_idx, length;
 
+    /*
+     * Enough space for keepalive ?
+     */
+    if (session->write_idx > (BGP_WRITEBUFSIZE - 19)) {
+	return;
+    }
+
     keepalive_start_idx = session->write_idx;
 
     push_be_uint(session, 8, 0xffffffffffffffff); /* marker */
@@ -437,6 +459,26 @@ timer_del (struct timer_ **pptr)
     *pptr = NULL;
 }
 
+
+/*
+ * Set timer expiration.
+ */
+void
+timer_set_expire (struct timer_ *timer, time_t sec, long nsec)
+{
+    clock_gettime(CLOCK_MONOTONIC, &timer->expire);
+    timer->expire.tv_sec += sec;
+    timer->expire.tv_nsec += nsec;
+
+    /*
+     * Handle nsec overflow.
+     */
+    if (timer->expire.tv_nsec >= 1000000000) {
+	timer->expire.tv_nsec -= 1000000000;
+	timer->expire.tv_sec++;
+    }
+}
+
 /*
  * Enqueue a callback function onto the timer list.
  */
@@ -457,20 +499,7 @@ timer_add (char *name, time_t sec, long nsec, void *data, void (*cb))
     timer->data = data;
     timer->cb = cb;
 
-    /*
-     * Set expiration interval.
-     */
-    clock_gettime(CLOCK_MONOTONIC, &timer->expire);
-    timer->expire.tv_sec += sec;
-    timer->expire.tv_nsec += nsec;
-
-    /*
-     * Handle nsec overflow.
-     */
-    if (timer->expire.tv_nsec >= 1000000000) {
-	timer->expire.tv_nsec -= 1000000000;
-	timer->expire.tv_sec++;
-    }
+    timer_set_expire(timer, sec, nsec);
 
     CIRCLEQ_INSERT_TAIL(&timer_qhead, timer, timer_qnode);
     printf("Add %s timer, expire in %lus %luns\n", timer->name, sec, nsec);
@@ -795,7 +824,7 @@ bgpdump_connect_session_cb (struct timer_ *timer)
 
 		    fprintf(stderr, "Socket to %s is writeable\n", blaster_addr);
 
-		    #if 0
+		    #if 1
 		    {
 			/* Now lets try to set the send buffer size to 4194304 bytes */
 			int size = 4096*1024;

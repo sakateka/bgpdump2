@@ -13,7 +13,7 @@ void bgpdump_blaster(void);
 
 #define BGP_TCP_PORT 179
 #define BGP_READBUFSIZE  65536
-#define BGP_WRITEBUFSIZE 65536
+#define BGP_WRITEBUFSIZE 1024*4096
 #define BGP_MAX_MESSAGE_SIZE 4096
 
 #define BGP_MSG_OPEN         1
@@ -71,6 +71,7 @@ struct __attribute__((__packed__)) bgp_session_
     struct ptree_node *ribwalk_pnode;
     int ribwalk_peer_index;
     int ribwalk_prefix_index;
+    uint ribwalk_complete:1;
 };
 
 #endif /* __BGPDUMP_BLASTER_H__ */
