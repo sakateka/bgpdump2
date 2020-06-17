@@ -441,6 +441,10 @@ push_open_message (struct bgp_session_ *session)
     write_be_uint(session->write_buf+open_start_idx+16, 2, length); /* overwrite message length */
 }
 
+/*
+ * We do not delete timers, but rather mark them deleted.
+ * timer_walk() handles the garbage collection.
+ */
 void
 timer_del (struct timer_ **pptr)
 {
@@ -453,8 +457,7 @@ timer_del (struct timer_ **pptr)
 
     printf("Delete %s timer\n", timer->name);
 
-    CIRCLEQ_REMOVE(&timer_qhead, timer, timer_qnode);
-    free(timer);
+    timer->delete = true;
 
     *pptr = NULL;
 }
@@ -569,14 +572,18 @@ timer_walk (void)
 	     */
 	    if ((timer_compare(&timer->expire, &now) == -1) && timer->cb) {
 
-		printf("Firing %s timer\n", timer->name);
-
 		/*
 		 * We may destroy our walking point. Prefetch the next node.
 		 */
 		next_timer = CIRCLEQ_NEXT(timer, timer_qnode);
 
-		(*timer->cb)(timer); /* Callback */
+		/*
+		 * Only callback into active timers.
+		 */
+		if (!timer->delete) {
+		    printf("Firing %s timer\n", timer->name);
+		    (*timer->cb)(timer);
+		}
 
 		CIRCLEQ_REMOVE(&timer_qhead, timer, timer_qnode);
 		free(timer);
