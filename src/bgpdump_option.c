@@ -38,7 +38,7 @@ extern int optopt;
 extern int opterr;
 extern int optreset;
 
-const char *optstring = "hVvdmbPp:a:uUrcjJ:kN:M:gl:L:46H:qf:G:B:";
+const char *optstring = "hVvdmbPp:a:uUrcjJ:kN:M:gl:L:46H:qf:G:B:S:";
 const struct option longopts[] =
 {
   { "help",         no_argument,       NULL, 'h' },
@@ -47,7 +47,8 @@ const struct option longopts[] =
   { "debug",        no_argument,       NULL, 'd' },
   { "compat-mode",  no_argument,       NULL, 'm' },
   { "brief",        no_argument,       NULL, 'b' },
-  { "blaster",      optional_argument, NULL, 'B' },
+  { "blaster",      required_argument, NULL, 'B' },
+  { "next-hop-self",required_argument, NULL, 'S' },
   { "quite",        no_argument,       NULL, 'q' },
   { "json",         optional_argument, NULL, 'J' },
   { "localpref",    required_argument, NULL, 'f' },
@@ -80,6 +81,7 @@ const char opthelp[] = "\
 -m, --compat-mode         Display in libbgpdump -m compatible mode.\n\
 -b, --brief               List information (i.e., simple prefix-nexthops).\n\
 -B, --blaster <addr>      Blast RIB to a BGP speaker.\n\
+-S, --next-hop-self <addr> Overwrite nexthop attribute.\n\
 -J, --json <URL>          Dump routes as RtBrick JSON schema into BDS REST API.\n\
 -G, --peer-group <name>   Peer group table name. In combination with --json option\n\
 -f, --localpref           Set Local-Preference Attribute in RtBrick JSON export.\n\
@@ -137,6 +139,8 @@ int json_port = 19091;
 int localpref = -1;
 int blaster = 0;
 char *blaster_addr = NULL;
+int nhs = 0;
+struct in_addr nhs_addr;
 
 extern char *progname;
 extern int safi;
@@ -292,6 +296,9 @@ bgpdump_getopt (int argc, char **argv)
         case 'B':
           blaster++;
           blaster_addr = optarg;
+          break;
+        case 'S':
+          nhs = inet_aton(optarg, &nhs_addr);
           break;
         case '4':
           qaf = AF_INET;
