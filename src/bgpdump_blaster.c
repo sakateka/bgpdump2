@@ -354,7 +354,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	/*
 	 * Re-schedule.
 	 */
-	session->write_job = timer_add("write_job", 0, 500 * MSEC, session, bgpdump_ribwalk_cb);
+	session->write_job = timer_add("write_job", 0, 50 * MSEC, session, bgpdump_ribwalk_cb);
     }
 }
 
