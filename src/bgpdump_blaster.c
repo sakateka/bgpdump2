@@ -452,7 +452,7 @@ push_mp_capability (struct bgp_session_ *session, uint afi, uint safi)
 void
 push_as4_capability (struct bgp_session_ *session)
 {
-    uint cap_idx, length;
+    uint cap_idx, length, my_as;
 
 
     /* Capability */
@@ -465,7 +465,13 @@ push_as4_capability (struct bgp_session_ *session)
      */
     push_be_uint(session, 1, 65);
     push_be_uint(session, 1, 4); /* length to encode my AS4 */
-    push_be_uint(session, 4, 65200); /* my AS */
+
+    if (autsiz) {
+	my_as = autnums[0];
+    } else {
+	my_as = 65535;
+    }
+    push_be_uint(session, 4, my_as); /* my AS */
 
     /*
      * Calculate Capability length field.
