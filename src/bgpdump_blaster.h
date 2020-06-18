@@ -73,6 +73,47 @@ struct __attribute__((__packed__)) bgp_session_
     int ribwalk_peer_index;
     int ribwalk_prefix_index;
     uint ribwalk_complete:1;
+
+    /*
+     * Statistics.
+     */
+    struct {
+	uint updates_sent;
+	uint prefixes_sent;
+    } stats;
 };
+
+/*
+ * List of log-ids.
+ */
+enum {
+    LOG_ID_MIN,
+    TIMER,
+    TIMER_DETAIL,
+    UPDATE,
+    UPDATE_DETAIL,
+    KEEPALIVE,
+    FSM,
+    IO,
+    LOG_ID_MAX
+};
+
+struct keyval_ {
+    u_int val;       /* value */
+    const char *key; /* key */
+};
+
+struct __attribute__((__packed__)) log_id_
+{
+    uint8_t enable;
+    void (*filter_cb)(struct log_id_ *, void *); /* Callback function for filtering */
+    void *filter_arg;
+};
+
+#define LOG(log_id_, fmt_, ...)					\
+    do { if (log_id[log_id_].enable) fprintf(stdout, fmt_, ##__VA_ARGS__); } while (0)
+
+extern struct log_id_ log_id[];
+extern void log_enable(char *);
 
 #endif /* __BGPDUMP_BLASTER_H__ */
