@@ -195,7 +195,19 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		} else {
 		    session->ribwalk_complete = true;
 		}
-		return; /* We're done - Send EOR */
+
+		/*
+		 * We're done. Send End of RIB marker which is an empty BGP update.
+		 */
+		push_be_uint(session, 8, 0xffffffffffffffff); /* marker */
+		push_be_uint(session, 8, 0xffffffffffffffff); /* marker */
+		push_be_uint(session, 2, 23); /* length */
+		push_be_uint(session, 1, BGP_MSG_UPDATE); /* message type */
+		push_be_uint(session, 2, 0); /* withdrawn routes length  */
+		push_be_uint(session, 2, 0); /* total path attributes length */
+
+		bgpdump_fflush(session);
+		return;
 	    }
 	    continue;
 	}
@@ -342,6 +354,32 @@ push_be_uint (struct bgp_session_ *session, uint length, unsigned long long valu
     session->write_idx += length;
 }
 
+void
+push_mp_capability (struct bgp_session_ *session, uint afi, uint safi)
+{
+    uint cap_idx, length;
+
+
+    /* Capability */
+    push_be_uint(session, 1, 2); /* Cap code */
+    push_be_uint(session, 1, 0); /* Cap length. To be updated later */
+    cap_idx = session->write_idx;
+
+    /*
+     * MP capability.
+     */
+    push_be_uint(session, 1, 1); /* MP extension CAp*/
+    push_be_uint(session, 1, 4); /* Length */
+    push_be_uint(session, 2, afi);
+    push_be_uint(session, 1, 0); /* Reserved */
+    push_be_uint(session, 1, safi);
+
+    /*
+     * Calculate Capability length field.
+     */
+    length = session->write_idx - cap_idx;
+    write_be_uint(session->write_buf+cap_idx-1, 1, length); /* overwrite Cap length */
+}
 
 void
 push_as4_capability (struct bgp_session_ *session)
@@ -427,6 +465,12 @@ push_open_message (struct bgp_session_ *session)
      * AS4 capability.
      */
     push_as4_capability(session);
+
+    /*
+     * MP capability for ipv4 and ipv6
+     */
+    push_mp_capability(session, 1, 1);
+    push_mp_capability(session, 2, 1);
 
     /*
      * Calculate Optional parameters length field.
@@ -1019,6 +1063,9 @@ bgpdump_blaster (void)
 	return;
     }
 
+    /*
+     * Init read buffer.
+     */
     session->read_buf = calloc(1, BGP_READBUFSIZE);
     if (!session->read_buf) {
 	return;
@@ -1026,10 +1073,14 @@ bgpdump_blaster (void)
     session->read_buf_start = session->read_buf;
     session->read_buf_end = session->read_buf;
 
+    /*
+     * Init write buffer.
+     */
     session->write_buf = calloc(1, BGP_WRITEBUFSIZE);
     if (!session->write_buf) {
 	return;
     }
+    session->write_idx = 0;
 
     CIRCLEQ_INIT(&timer_qhead); /* Init timer queue */
 
