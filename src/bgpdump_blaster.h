@@ -80,6 +80,7 @@ struct __attribute__((__packed__)) bgp_session_
     struct {
 	uint updates_sent;
 	uint prefixes_sent;
+	uint octets_sent;
     } stats;
 };
 
