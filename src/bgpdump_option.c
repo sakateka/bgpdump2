@@ -31,6 +31,7 @@
 #include "bgpdump_option.h"
 #include "bgpdump_peer.h"
 #include "bgpdump_route.h"
+#include "bgpdump_blaster.h"
 
 extern char *optarg;
 extern int optind;
@@ -38,7 +39,7 @@ extern int optopt;
 extern int opterr;
 extern int optreset;
 
-const char *optstring = "hVvdmbPp:a:uUrcjJ:kN:M:gl:L:46H:qf:G:B:S:";
+const char *optstring = "hVvdmbPp:a:uUrcjJ:kN:M:gl:L:46H:qf:G:B:S:t:";
 const struct option longopts[] =
 {
   { "help",         no_argument,       NULL, 'h' },
@@ -70,6 +71,7 @@ const struct option longopts[] =
   { "ipv4",         no_argument,       NULL, '4' },
   { "ipv6",         no_argument,       NULL, '6' },
   { "heatmap",      required_argument, NULL, 'H' },
+  { "log",          required_argument, NULL, 't' },
   { NULL,           0,                 NULL, 0   }
 };
 
@@ -105,6 +107,7 @@ const char opthelp[] = "\
 -4, --ipv4                Specify that the query is IPv4. (default)\n\
 -6, --ipv6                Specify that the query is IPv6.\n\
 -H, --heatmap <file-prefix> Produces the heatmap.\n\
+-t, --log <log-name>      Turn on logging.\n\
 ";
 
 int longindex;
@@ -170,6 +173,11 @@ bgpdump_getopt (int argc, char **argv)
   int status = 0;
   char *endptr;
   int val;
+
+  /*
+   * Clear logging global.
+   */
+  memset(log_id, 0, sizeof(struct log_id_) * LOG_ID_MAX);
 
   while (1)
     {
@@ -300,6 +308,9 @@ bgpdump_getopt (int argc, char **argv)
         case 'S':
           nhs = inet_aton(optarg, &nhs_addr);
           break;
+        case 't':
+	    log_enable(optarg);
+	  break;
         case '4':
           qaf = AF_INET;
           break;

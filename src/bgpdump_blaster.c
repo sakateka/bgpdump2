@@ -35,6 +35,26 @@
 
 /* Globals */
 CIRCLEQ_HEAD(timer_head_, timer_ ) timer_qhead; /* Timer root */
+struct log_id_ log_id[LOG_ID_MAX];
+
+struct keyval_ log_names[] = {
+    { TIMER,         "timer" },
+    { TIMER_DETAIL,  "timer-detail" },
+    { UPDATE,        "update" },
+    { UPDATE_DETAIL, "update-detail" },
+    { KEEPALIVE,     "keepalive" },
+    { FSM,           "fsm" },
+    { IO,            "io" },
+    { 0, NULL}
+};
+
+struct keyval_ bgp_msg_names[] = {
+    { BGP_MSG_OPEN,         "open" },
+    { BGP_MSG_UPDATE,       "update" },
+    { BGP_MSG_NOTIFICATION, "notification" },
+    { BGP_MSG_KEEPALIVE,    "keepalive" },
+    { 0, NULL}
+};
 
 /* Prototypes */
 void bgpdump_connect_session_cb(struct timer_ *);
@@ -44,6 +64,38 @@ void bgpdump_rebase_read_buffer(struct bgp_session_ *);
 void push_be_uint(struct bgp_session_ *, uint, unsigned long long);
 void write_be_uint (u_char *, uint, unsigned long long);
 struct timer_ *timer_add (char *, time_t, long, void *, void (*));
+
+/*
+ * Turn on logging
+ */
+void
+log_enable (char *log_name)
+{
+    int idx;
+
+    idx = 0;
+    while (log_names[idx].key) {
+	if (strcmp(log_names[idx].key, log_name) == 0) {
+	    log_id[log_names[idx].val].enable = 1;
+	}
+	idx++;
+    }
+}
+
+const char *
+keyval_get_key (struct keyval_ *keyval, int val)
+{
+    struct keyval_ *ptr;
+
+    ptr = keyval;
+    while (ptr->key) {
+	if (ptr->val == val) {
+	    return ptr->key;
+	}
+	ptr++;
+    }
+    return "unknown";
+}
 
 /*
  * Flush the write buffer.
@@ -71,7 +123,7 @@ bgpdump_fflush (struct bgp_session_ *session)
 	    return 0;
 
         default:
-	    printf("write(): error %s (%d)\n", strerror(errno), errno);
+	    LOG(IO, "write(): error %s (%d)\n", strerror(errno), errno);
 	    break;
         }
 	return 1;
@@ -81,7 +133,7 @@ bgpdump_fflush (struct bgp_session_ *session)
      * Full write ?
      */
     if (res == (int)session->write_idx) {
-	printf("Full write %u bytes buffer to %s\n", res, blaster_addr);
+	LOG(IO, "Full write %u bytes buffer to %s\n", res, blaster_addr);
 	session->write_idx = 0;
 	return 1;
     }
@@ -90,8 +142,7 @@ bgpdump_fflush (struct bgp_session_ *session)
      * Partial write ?
      */
     if (res && res < (int)session->write_idx) {
-
-	printf("Partial write %u bytes buffer to %s\n", res, blaster_addr);
+	LOG(IO, "Partial write %u bytes buffer to %s\n", res, blaster_addr);
 
 	/*
 	 * Rebase the buffer.
@@ -116,6 +167,7 @@ bgpdump_push_prefix(struct bgp_session_ *session, struct bgp_prefix_ *prefix)
 	*(session->write_buf + session->write_idx) = prefix->prefix[idx];
 	session->write_idx++;
     }
+    session->stats.prefixes_sent++;
 }
 
 
@@ -129,6 +181,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
     struct ptree *t;
     int peer_index, prefix_index;
     uint update_start_idx, length;
+    uint updates_encoded;
 
     session = (struct bgp_session_ *)timer->data;
 
@@ -167,12 +220,13 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
     }
 
     if (session->write_idx > (BGP_WRITEBUFSIZE - BGP_MAX_MESSAGE_SIZE)) {
-	printf("Write buffer full\n");
+	LOG(IO, "Write buffer full\n");
     }
 
     /*
      * Encode up until there is at least space for one full message.
      */
+    updates_encoded = 0;
     while (session->write_idx < (BGP_WRITEBUFSIZE - BGP_MAX_MESSAGE_SIZE)) {
 
 	bgp_path = session->ribwalk_pnode->data;
@@ -189,7 +243,6 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    session->ribwalk_pnode = ptree_next(session->ribwalk_pnode);
 	    session->ribwalk_prefix_index = 0;
 	    if (!session->ribwalk_pnode) {
-		printf("End-of-RIB\n");
 		if (session->ribwalk_peer_index < peer_spec_size) {
 		    session->ribwalk_peer_index++;
 		} else {
@@ -205,7 +258,13 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		push_be_uint(session, 1, BGP_MSG_UPDATE); /* message type */
 		push_be_uint(session, 2, 0); /* withdrawn routes length  */
 		push_be_uint(session, 2, 0); /* total path attributes length */
+		session->stats.updates_sent++;
 
+		printf("Sent %u updates, %u prefixes\n",
+		       session->stats.updates_sent,
+		       session->stats.prefixes_sent);
+
+		printf("End-of-RIB\n");
 		bgpdump_fflush(session);
 		return;
 	    }
@@ -214,9 +273,9 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 
 	if (session->ribwalk_prefix_index &&
 	    (session->ribwalk_prefix_index < bgp_path->refcount)) {
-	    printf("Resuming encoding %u/%u prefixes\n",
-		   bgp_path->refcount - session->ribwalk_prefix_index,
-		   bgp_path->refcount);
+	    LOG(IO, "Resuming encoding %u/%u prefixes\n",
+		bgp_path->refcount - session->ribwalk_prefix_index,
+		bgp_path->refcount);
 	}
 
 	/*
@@ -254,7 +313,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	prefix_index = 0;
 	CIRCLEQ_FOREACH(prefix, &bgp_path->path_qhead, prefix_qnode) {
 	    if (session->ribwalk_prefix_index &&
-		(prefix_index <= session->ribwalk_prefix_index)) {
+		(prefix_index < session->ribwalk_prefix_index)) {
 		prefix_index++;
 		continue;
 	    }
@@ -265,7 +324,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	     * If there is not enough space for at least one full prefix then bail.
 	     */
 	    if (session->write_idx - update_start_idx >= (BGP_MAX_MESSAGE_SIZE - 5)) {
-		printf("Update full, encoded %u prefixes\n", prefix_index);
+		LOG(IO, "Update full, encoded %u prefixes\n", prefix_index);
 		break;
 	    }
 	}
@@ -276,6 +335,15 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	 */
 	length = session->write_idx - update_start_idx;
 	write_be_uint(session->write_buf+update_start_idx+16, 2, length); /* overwrite message length */
+
+	session->stats.updates_sent++;
+	updates_encoded++;
+    }
+
+    if (updates_encoded) {
+	printf("Sent %u updates, %u prefixes\n",
+	       session->stats.updates_sent,
+	       session->stats.prefixes_sent);
     }
 
     /*
@@ -499,7 +567,7 @@ timer_del (struct timer_ **pptr)
 	return;
     }
 
-    printf("Delete %s timer\n", timer->name);
+    LOG(TIMER, "Delete %s timer\n", timer->name);
 
     timer->delete = true;
 
@@ -549,7 +617,7 @@ timer_add (char *name, time_t sec, long nsec, void *data, void (*cb))
     timer_set_expire(timer, sec, nsec);
 
     CIRCLEQ_INSERT_TAIL(&timer_qhead, timer, timer_qnode);
-    printf("Add %s timer, expire in %lus %luns\n", timer->name, sec, nsec);
+    LOG(TIMER, "Add %s timer, expire in %lus %luns\n", timer->name, sec, nsec);
 
     return timer;
 }
@@ -605,11 +673,8 @@ timer_walk (void)
 
 	CIRCLEQ_FOREACH(timer, &timer_qhead, timer_qnode) {
 
-#if 0
-	    printf("Checking %s timer, expire %lu.%lu\n", timer->name,
-		   timer->expire.tv_sec,
-		   timer->expire.tv_nsec);
-#endif
+	    LOG(TIMER_DETAIL, "Checking %s timer, expire %lu.%lu\n",
+		timer->name, timer->expire.tv_sec, timer->expire.tv_nsec);
 
 	    /*
 	     * Expired ?
@@ -625,7 +690,7 @@ timer_walk (void)
 		 * Only callback into active timers.
 		 */
 		if (!timer->delete) {
-		    printf("Firing %s timer\n", timer->name);
+		    LOG(TIMER, "Firing %s timer\n", timer->name);
 		    (*timer->cb)(timer);
 		}
 
@@ -660,9 +725,7 @@ timer_walk (void)
 	     * Find the min timer.
 	     */
 	    if (timer_compare(&timer->expire, &min) == -1) {
-#if 0
-		printf("New Minimum sleep (%s) timer, found\n", timer->name);
-#endif
+		LOG(TIMER_DETAIL, "New Minimum sleep (%s) timer, found\n", timer->name);
 		min.tv_sec = timer->expire.tv_sec;
 		min.tv_nsec = timer->expire.tv_nsec;
 	    }
@@ -671,10 +734,8 @@ timer_walk (void)
 	/*
 	 * Calculate the sleep timer.
 	 */
-#if 0
-	printf("Now   %lu.%lu\n", now.tv_sec, now.tv_nsec);
-	printf("Min   %lu.%lu\n", min.tv_sec, min.tv_nsec);
-#endif
+	LOG(TIMER_DETAIL, "Now   %lu.%lu\n", now.tv_sec, now.tv_nsec);
+	LOG(TIMER_DETAIL, "Min   %lu.%lu\n", min.tv_sec, min.tv_nsec);
 
 	clock_gettime(CLOCK_MONOTONIC, &now);
 	if (timer_compare(&now, &min) == -1) {
@@ -693,12 +754,10 @@ timer_walk (void)
 	    sleep.tv_nsec = 20 * MSEC;
 	}
 
-#if 0
-	printf("Sleep %lu.%lu\n", sleep.tv_sec, sleep.tv_nsec);
-#endif
+	LOG(TIMER_DETAIL, "Sleep %lu.%lu\n", sleep.tv_sec, sleep.tv_nsec);
 	res = nanosleep(&sleep, &rem);
 	if (res == -1) {
-	    printf("nanosleep(): error %s (%d)\n", strerror(errno), errno);
+	    LOG(TIMER, "nanosleep(): error %s (%d)\n", strerror(errno), errno);
 	    return;
 	}
 
@@ -805,6 +864,7 @@ bgpdump_connect_session_cb (struct timer_ *timer)
     session = (struct bgp_session_ *)timer->data;
     session->state = CONNECT;
     memset(&session->sockaddr_in, 0, sizeof(session->sockaddr_in));
+    memset(&session->stats, 0, sizeof(session->stats));
 
     /* Get socket. */
     protoent = getprotobyname(protoname);
@@ -911,6 +971,7 @@ void
 bgpdump_read (struct bgp_session_ *session)
 {
     uint size, length, type;
+    char session_addr[40];
 
     while (1) {
 	size = session->read_buf_end - session->read_buf_start;
@@ -927,7 +988,10 @@ bgpdump_read (struct bgp_session_ *session)
 	    break;
 	}
 
-	printf("Read message type %u, length %u\n", type, length);
+	inet_ntop(session->sockaddr_in.sin_family, &session->sockaddr_in.sin_addr,
+		  session_addr, sizeof(session_addr));
+	printf("Read %s message (%u), length %u from %s\n",
+	       keyval_get_key(bgp_msg_names, type), type, length, session_addr);
 
 	switch (type) {
 	case BGP_MSG_OPEN:
