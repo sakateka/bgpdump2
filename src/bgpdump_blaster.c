@@ -135,6 +135,7 @@ bgpdump_fflush (struct bgp_session_ *session)
     if (res == (int)session->write_idx) {
 	LOG(IO, "Full write %u bytes buffer to %s\n", res, blaster_addr);
 	session->write_idx = 0;
+	session->stats.octets_sent += res;
 	return 1;
     }
 
@@ -143,6 +144,7 @@ bgpdump_fflush (struct bgp_session_ *session)
      */
     if (res && res < (int)session->write_idx) {
 	LOG(IO, "Partial write %u bytes buffer to %s\n", res, blaster_addr);
+	session->stats.octets_sent += res;
 
 	/*
 	 * Rebase the buffer.
@@ -260,9 +262,10 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		push_be_uint(session, 2, 0); /* total path attributes length */
 		session->stats.updates_sent++;
 
-		printf("Sent %u updates, %u prefixes\n",
+		printf("Sent %u updates, %u prefixes, %u octets\n",
 		       session->stats.updates_sent,
-		       session->stats.prefixes_sent);
+		       session->stats.prefixes_sent,
+		       session->stats.octets_sent);
 
 		printf("End-of-RIB\n");
 		bgpdump_fflush(session);
@@ -341,9 +344,10 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
     }
 
     if (updates_encoded) {
-	printf("Sent %u updates, %u prefixes\n",
+	printf("Sent %u updates, %u prefixes, %u octets\n",
 	       session->stats.updates_sent,
-	       session->stats.prefixes_sent);
+	       session->stats.prefixes_sent,
+	       session->stats.octets_sent);
     }
 
     /*
