@@ -45,6 +45,8 @@ struct keyval_ log_names[] = {
     { KEEPALIVE,     "keepalive" },
     { FSM,           "fsm" },
     { IO,            "io" },
+    { NORMAL,        "normal" },
+    { ERROR,         "error" },
     { 0, NULL}
 };
 
@@ -64,6 +66,23 @@ void bgpdump_rebase_read_buffer(struct bgp_session_ *);
 void push_be_uint(struct bgp_session_ *, uint, unsigned long long);
 void write_be_uint (u_char *, uint, unsigned long long);
 struct timer_ *timer_add (char *, time_t, long, void *, void (*));
+
+char *
+fmt_timestamp (void)
+{
+    static char ts_str[sizeof("Jun 19 08:07:13.711541")];
+    struct timespec now;
+    struct tm tm;
+    int len;
+
+    clock_gettime(CLOCK_REALTIME, &now);
+    localtime_r(&now.tv_sec, &tm);
+
+    len = strftime(ts_str, sizeof(ts_str), "%b %d %H:%M:%S", &tm);
+    snprintf(ts_str+len, sizeof(ts_str) - len, ".%06lu", now.tv_nsec / 1000);
+
+    return ts_str;
+}
 
 /*
  * Turn on logging
@@ -212,11 +231,11 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    return;
 	}
 
-	printf("RIB for peer-index %d\n", peer_index);
-	printf("%u ipv4 prefixes, %u ipv6 prefixes, %u paths\n",
-	       peer_table[peer_index].ipv4_count,
-	       peer_table[peer_index].ipv6_count,
-	       peer_table[peer_index].path_count);
+	LOG(NORMAL, "RIB for peer-index %d\n", peer_index);
+	LOG(NORMAL, "%u ipv4 prefixes, %u ipv6 prefixes, %u paths\n",
+	    peer_table[peer_index].ipv4_count,
+	    peer_table[peer_index].ipv6_count,
+	    peer_table[peer_index].path_count);
 
 	session->ribwalk_pnode = ptree_head(t);
     }
@@ -262,12 +281,12 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		push_be_uint(session, 2, 0); /* total path attributes length */
 		session->stats.updates_sent++;
 
-		printf("Sent %u updates, %u prefixes, %u octets\n",
-		       session->stats.updates_sent,
-		       session->stats.prefixes_sent,
-		       session->stats.octets_sent);
+		LOG(NORMAL, "Sent %u updates, %u prefixes, %u octets\n",
+		    session->stats.updates_sent,
+		    session->stats.prefixes_sent,
+		    session->stats.octets_sent);
 
-		printf("End-of-RIB\n");
+		LOG(NORMAL, "End-of-RIB\n");
 		bgpdump_fflush(session);
 		return;
 	    }
@@ -344,10 +363,10 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
     }
 
     if (updates_encoded) {
-	printf("Sent %u updates, %u prefixes, %u octets\n",
-	       session->stats.updates_sent,
-	       session->stats.prefixes_sent,
-	       session->stats.octets_sent);
+	LOG(NORMAL, "Sent %u updates, %u prefixes, %u octets\n",
+	    session->stats.updates_sent,
+	    session->stats.prefixes_sent,
+	    session->stats.octets_sent);
     }
 
     /*
@@ -915,7 +934,7 @@ bgpdump_connect_session_cb (struct timer_ *timer)
 
 	if (errno == EINPROGRESS) {
 
-	    fprintf(stderr, "Connecting to %s\n", blaster_addr);
+	    LOG(NORMAL, "Connecting to %s\n", blaster_addr);
 
 	    do {
 		tv.tv_sec = 5;
@@ -924,7 +943,7 @@ bgpdump_connect_session_cb (struct timer_ *timer)
 		FD_SET(session->sockfd, &myset);
 		res = select(session->sockfd+1, NULL, &myset, NULL, &tv);
 		if (res < 0 && errno != EINTR) {
-		    fprintf(stderr, "Error connecting to %s %d - %s\n", blaster_addr, errno, strerror(errno));
+		    LOG(ERROR, "Error connecting to %s %d - %s\n", blaster_addr, errno, strerror(errno));
 		    exit(0);
 		}
 		else if (res > 0) {
@@ -934,16 +953,16 @@ bgpdump_connect_session_cb (struct timer_ *timer)
 		     */
 		    lon = sizeof(int);
 		    if (getsockopt(session->sockfd, SOL_SOCKET, SO_ERROR, (void*)(&valopt), &lon) < 0) {
-			fprintf(stderr, "Error in getsockopt() %d - %s\n", errno, strerror(errno));
+			LOG(ERROR, "Error in getsockopt() %d - %s\n", errno, strerror(errno));
 			exit(0);
 		    }
 		    /* Check the return value */
 		    if (valopt) {
-			fprintf(stderr, "Error in delayed connection() %d - %s\n", valopt, strerror(valopt));
+			LOG(ERROR, "Error in delayed connection() %d - %s\n", valopt, strerror(valopt));
 			exit(0);
 		    }
 
-		    fprintf(stderr, "Socket to %s is writeable\n", blaster_addr);
+		    LOG(NORMAL, "Socket to %s is writeable\n", blaster_addr);
 
 		    #if 1
 		    {
@@ -952,7 +971,7 @@ bgpdump_connect_session_cb (struct timer_ *timer)
 			int err;
 			err = setsockopt(session->sockfd, SOL_SOCKET, SO_SNDBUF,  &size, sizeof(int));
 			if (err != 0) {
-			    printf("Unable to set send buffer size, continuing with default size\n");
+			    LOG(ERROR, "Unable to set send buffer size, continuing with default size\n");
 			}
 		    }
 		    #endif
@@ -961,7 +980,7 @@ bgpdump_connect_session_cb (struct timer_ *timer)
 		    break;
 		} else {
 
-		    fprintf(stderr, "Connect timeout\n");
+		    LOG(NORMAL, "Connect timeout\n");
 		    close(session->sockfd);
 		    session->sockfd = -1;
 
@@ -1000,8 +1019,8 @@ bgpdump_read (struct bgp_session_ *session)
 
 	inet_ntop(session->sockaddr_in.sin_family, &session->sockaddr_in.sin_addr,
 		  session_addr, sizeof(session_addr));
-	printf("Read %s message (%u), length %u from %s\n",
-	       keyval_get_key(bgp_msg_names, type), type, length, session_addr);
+	LOG(NORMAL, "Read %s message (%u), length %u from %s\n",
+	    keyval_get_key(bgp_msg_names, type), type, length, session_addr);
 
 	switch (type) {
 	case BGP_MSG_OPEN:
@@ -1077,7 +1096,7 @@ bgpdump_read_cb (struct timer_ *timer)
 		break;
 
 	    default:
-		printf("  read() error %s\n", strerror(errno));
+		LOG(ERROR, "  read() error %s\n", strerror(errno));
 		break;
 	    }
 
@@ -1157,6 +1176,10 @@ bgpdump_blaster (void)
     session->write_idx = 0;
 
     CIRCLEQ_INIT(&timer_qhead); /* Init timer queue */
+
+    /* Logging */
+    log_id[NORMAL].enable = true;
+    log_id[ERROR].enable = true;
 
     /*
      * Enqueue a connect event immediatly.
