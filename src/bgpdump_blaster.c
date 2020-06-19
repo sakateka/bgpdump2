@@ -58,6 +58,16 @@ struct keyval_ bgp_msg_names[] = {
     { 0, NULL}
 };
 
+struct keyval_ bgp_fsm_state_names[] = {
+    { IDLE,         "idle" },
+    { CONNECT,      "connect" },
+    { ACTIVE,       "active" },
+    { OPENSENT,     "opensent" },
+    { OPENCONFIRM,  "openconfirm" },
+    { ESTABLISHED,  "established" },
+    { 0, NULL}
+};
+
 /* Prototypes */
 void bgpdump_connect_session_cb(struct timer_ *);
 void bgpdump_read_cb(struct timer_ *);
@@ -67,6 +77,9 @@ void push_be_uint(struct bgp_session_ *, uint, unsigned long long);
 void write_be_uint (u_char *, uint, unsigned long long);
 struct timer_ *timer_add (char *, time_t, long, void *, void (*));
 
+/*
+ * Format the logging timestamp.
+ */
 char *
 fmt_timestamp (void)
 {
@@ -85,7 +98,7 @@ fmt_timestamp (void)
 }
 
 /*
- * Turn on logging
+ * Check if logging is enabled.
  */
 void
 log_enable (char *log_name)
@@ -117,6 +130,23 @@ keyval_get_key (struct keyval_ *keyval, int val)
 }
 
 /*
+ * LOG changes in the FSM.
+ */
+void
+bgpdump_fsm_change (struct bgp_session_ *session, state_t new_state)
+{
+    char session_addr[40];
+
+    inet_ntop(session->sockaddr_in.sin_family, &session->sockaddr_in.sin_addr,
+	      session_addr, sizeof(session_addr));
+    LOG(FSM, "neighbor %s state change from %s -> %s\n", session_addr,
+	keyval_get_key(bgp_fsm_state_names, session->state),
+	keyval_get_key(bgp_fsm_state_names, new_state));
+
+    session->state = new_state;
+}
+
+/*
  * Flush the write buffer.
  */
 int
@@ -142,7 +172,7 @@ bgpdump_fflush (struct bgp_session_ *session)
 	    return 0;
 
         default:
-	    LOG(IO, "write(): error %s (%d)\n", strerror(errno), errno);
+	    LOG(ERROR, "write(): error %s (%d)\n", strerror(errno), errno);
 	    break;
         }
 	return 1;
@@ -799,7 +829,7 @@ bgpdump_close_session_cb (struct timer_ *timer)
     struct bgp_session_ *session;
 
     session = (struct bgp_session_ *)timer->data;
-    session->state = IDLE;
+    bgpdump_fsm_change(session, IDLE);
 
     close(session->sockfd);
     session->sockfd = -1;
@@ -871,7 +901,7 @@ bgpdump_send_open_cb (struct timer_ *timer)
      * Once an open message is received this timer needs to be stopped.
      */
     session->open_sent_timer = timer_add("open_sent", 10, 0, session, &bgpdump_close_session_cb);
-    session->state = OPENSENT;
+    bgpdump_fsm_change(session, OPENSENT);
 
     /*
      * Start the read job.
@@ -891,7 +921,7 @@ bgpdump_connect_session_cb (struct timer_ *timer)
     struct hostent *hostent;
 
     session = (struct bgp_session_ *)timer->data;
-    session->state = CONNECT;
+
     memset(&session->sockaddr_in, 0, sizeof(session->sockaddr_in));
     memset(&session->stats, 0, sizeof(session->stats));
 
@@ -922,6 +952,8 @@ bgpdump_connect_session_cb (struct timer_ *timer)
     session->sockaddr_in.sin_addr.s_addr = in_addr;
     session->sockaddr_in.sin_family = AF_INET;
     session->sockaddr_in.sin_port = htons(BGP_TCP_PORT);
+
+    bgpdump_fsm_change(session, CONNECT);
 
     /* Do the actual connection. */
     if (connect(session->sockfd, (struct sockaddr*)&session->sockaddr_in, sizeof(session->sockaddr_in)) < 0) {
@@ -1026,7 +1058,7 @@ bgpdump_read (struct bgp_session_ *session)
 	case BGP_MSG_OPEN:
 	    /* stop timer */
 	    timer_del(&session->open_sent_timer);
-	    session->state = OPENCONFIRM;
+	    bgpdump_fsm_change(session, OPENCONFIRM);
 
 	    push_keepalive_message(session);
 	    bgpdump_fflush(session);
@@ -1040,7 +1072,7 @@ bgpdump_read (struct bgp_session_ *session)
 	    return;
 
 	case BGP_MSG_KEEPALIVE:
-	    session->state = ESTABLISHED;
+	    bgpdump_fsm_change(session, ESTABLISHED);
 
 	    /* reset hold timer */
 	    timer_del(&session->hold_timer);
@@ -1180,6 +1212,7 @@ bgpdump_blaster (void)
     /* Logging */
     log_id[NORMAL].enable = true;
     log_id[ERROR].enable = true;
+    log_id[FSM].enable = true;
 
     /*
      * Enqueue a connect event immediatly.
