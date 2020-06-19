@@ -275,8 +275,8 @@ bgpdump_push_prefix(struct bgp_session_ *session, struct bgp_prefix_ *prefix)
 	    *(session->write_buf + session->write_idx) = prefix->prefix[idx];
 	    session->write_idx++;
 	}
-	session->stats.prefixes_sent++;
     }
+    session->stats.prefixes_sent++;
 }
 
 void
@@ -318,8 +318,8 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    return;
 	}
 
-	LOG(NORMAL, "RIB for peer-index %d\n", peer_index);
-	LOG(NORMAL, "%u ipv4 prefixes, %u ipv6 prefixes, %u paths\n",
+	LOG(NORMAL, "RIB for peer-index %d: %u ipv4 prefixes, %u ipv6 prefixes, %u paths\n",
+	    peer_index,
 	    peer_table[peer_index].ipv4_count,
 	    peer_table[peer_index].ipv6_count,
 	    peer_table[peer_index].path_count);
@@ -411,8 +411,8 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    int old_show, old_detail;
 
 	    memset(&route, 0, sizeof(route));
-	    printf("Encode path_id %u, length %u, refcount %u\n",
-		   bgp_path->path_id, bgp_path->path_length, bgp_path->refcount);
+	    LOG(UPDATE, "Encode path_id %u, length %u, refcount %u\n",
+		bgp_path->path_id, bgp_path->path_length, bgp_path->refcount);
 
 	    old_show = show;
 	    old_detail = detail;
