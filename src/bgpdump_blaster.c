@@ -68,6 +68,58 @@ struct keyval_ bgp_fsm_state_names[] = {
     { 0, NULL}
 };
 
+struct keyval_ bgp_notification_error_values[] = {
+    { 1, "Message Header Error" },
+    { 2, "OPEN Message Error" },
+    { 3, "UPDATE Message Error" },
+    { 4, "Hold Timer Expired" },
+    { 5, "FSM Error" },
+    { 6, "Cease" },
+    { 0, NULL}
+};
+
+struct keyval_ bgp_notification_msg_hdr_error_values[] = {
+    { 1, "Connection Not Synchronized" },
+    { 2, "Bad Message Length" },
+    { 3, "Bad Message Type" },
+    { 0, NULL}
+};
+
+struct keyval_ bgp_notification_open_error_values[] = {
+    { 1, "Unsupported Version Number" },
+    { 2, "Bad Peer AS" },
+    { 3, "Bad BGP Identifier" },
+    { 4, "Unsupported Optional Parameter" },
+    { 6, "Unacceptable Hold Time" },
+    { 0, NULL}
+};
+
+struct keyval_ bgp_notification_update_error_values[] = {
+    { 1, "Malformed Attribute List" },
+    { 2, "Unrecognized Well-known Attribute" },
+    { 3, "Missing Well-known Attribute" },
+    { 4, "Attribute Flags Error" },
+    { 5, "Attribute Length Error" },
+    { 6, "Invalid ORIGIN Attribute" },
+    { 8, "Invalid NEXT_HOP Attribute" },
+    { 9, "Optional Attribute Error" },
+    { 10, "Invalid Network Field" },
+    { 11, "Malformed AS_PATH" },
+    { 0, NULL}
+};
+
+struct keyval_ bgp_notification_cease_error_values[] = {
+    { 1, "Maximum Number of Prefixes Reached" },
+    { 2, "Administrative Shutdown" },
+    { 3, "Peer De-configured" },
+    { 4, "Administrative Reset" },
+    { 5, "Connection Rejected" },
+    { 6, "Other Configuration Change" },
+    { 7, "Connection Collision Resolution" },
+    { 8, "Out of Resources" },
+    { 0, NULL}
+};
+
 /* Prototypes */
 void bgpdump_connect_session_cb(struct timer_ *);
 void bgpdump_read_cb(struct timer_ *);
@@ -1078,6 +1130,40 @@ bgpdump_read (struct bgp_session_ *session)
 	    break;
 
 	case BGP_MSG_NOTIFICATION:
+	    {
+		uint8_t error_code, error_subcode;
+
+		error_code = *(session->read_buf_start+19);
+		error_subcode = *(session->read_buf_start+20);
+
+		switch (error_code) {
+		case 1: /* Message Header Error */
+		    LOG(NORMAL, "Notification Error: %s (%u), %s (%u)\n",
+			keyval_get_key(bgp_notification_error_values, error_code), error_code,
+			keyval_get_key(bgp_notification_msg_hdr_error_values, error_subcode), error_subcode);
+		    break;
+		case 2: /* OPEN Message Error */
+		    LOG(NORMAL, "Notification Error: %s (%u), %s (%u)\n",
+			keyval_get_key(bgp_notification_error_values, error_code), error_code,
+			keyval_get_key(bgp_notification_open_error_values, error_subcode), error_subcode);
+		    break;
+		case 3: /* Update Message Error */
+		    LOG(NORMAL, "Notification Error: %s (%u), %s (%u)\n",
+			keyval_get_key(bgp_notification_error_values, error_code), error_code,
+			keyval_get_key(bgp_notification_update_error_values, error_subcode), error_subcode);
+		    break;
+		case 6: /* Cease */
+		    LOG(NORMAL, "Notification Error: %s (%u), %s (%u)\n",
+			keyval_get_key(bgp_notification_error_values, error_code), error_code,
+			keyval_get_key(bgp_notification_cease_error_values, error_subcode), error_subcode);
+		    break;
+		default:
+		    LOG(NORMAL, "Notification Error: %s (%u), subcode %u\n",
+			keyval_get_key(bgp_notification_error_values, error_code), error_code, error_subcode);
+		    break;
+		}
+	    }
+
 	    /* restart session */
 	    session->close_timer = timer_add("restart_session", 0, 0, session, &bgpdump_close_session_cb);
 	    return;
@@ -1093,7 +1179,6 @@ bgpdump_read (struct bgp_session_ *session)
 	     * Start the walk job.
 	     */
 	    session->write_job = timer_add("write_job", 1, 0, session, bgpdump_ribwalk_cb);
-
 	    break;
 
 	case BGP_MSG_UPDATE:
