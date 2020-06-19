@@ -137,6 +137,10 @@ bgpdump_fsm_change (struct bgp_session_ *session, state_t new_state)
 {
     char session_addr[40];
 
+    if (session->state == new_state) {
+	return;
+    }
+
     inet_ntop(session->sockaddr_in.sin_family, &session->sockaddr_in.sin_addr,
 	      session_addr, sizeof(session_addr));
     LOG(FSM, "neighbor %s state change from %s -> %s\n", session_addr,
@@ -211,16 +215,17 @@ bgpdump_push_prefix(struct bgp_session_ *session, struct bgp_prefix_ *prefix)
 {
     int idx, length;
 
-    *(session->write_buf + session->write_idx) = prefix->prefix_length;
-    session->write_idx++;
-    length = (prefix->prefix_length + 7) / 8;
-    for (idx = 0; idx < length; idx++) {
-	*(session->write_buf + session->write_idx) = prefix->prefix[idx];
+    if (prefix->afi == AF_INET) {
+	*(session->write_buf + session->write_idx) = prefix->prefix_length;
 	session->write_idx++;
+	length = (prefix->prefix_length + 7) / 8;
+	for (idx = 0; idx < length; idx++) {
+	    *(session->write_buf + session->write_idx) = prefix->prefix[idx];
+	    session->write_idx++;
+	}
+	session->stats.prefixes_sent++;
     }
-    session->stats.prefixes_sent++;
 }
-
 
 void
 bgpdump_ribwalk_cb (struct timer_ *timer)
@@ -350,16 +355,22 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	       bgp_path->path_length);
 	session->write_idx += bgp_path->path_length;
 
-	memset(&route, 0, sizeof(route));
-#if 0
-	printf("Encode path_id %u, length %u, refcount %u\n",
-	       bgp_path->path_id, bgp_path->path_length, bgp_path->refcount);
+	if (log_id[UPDATE].enable) {
+	    int old_show, old_detail;
 
-	show = 1;
-	detail = 1;
-	bgpdump_process_bgp_attributes(&route, session->ribwalk_pnode->key,
+	    memset(&route, 0, sizeof(route));
+	    printf("Encode path_id %u, length %u, refcount %u\n",
+		   bgp_path->path_id, bgp_path->path_length, bgp_path->refcount);
+
+	    old_show = show;
+	    old_detail = detail;
+	    show = 1;
+	    detail = 1;
+	    bgpdump_process_bgp_attributes(&route, session->ribwalk_pnode->key,
 				       session->ribwalk_pnode->key + bgp_path->path_length);
-#endif
+	    show = old_show;
+	    detail = old_detail;
+	}
 
 	/* prefixes */
 	prefix_index = 0;
