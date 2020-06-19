@@ -96,6 +96,8 @@ enum {
     KEEPALIVE,
     FSM,
     IO,
+    NORMAL,
+    ERROR,
     LOG_ID_MAX
 };
 
@@ -112,7 +114,7 @@ struct __attribute__((__packed__)) log_id_
 };
 
 #define LOG(log_id_, fmt_, ...)					\
-    do { if (log_id[log_id_].enable) fprintf(stdout, fmt_, ##__VA_ARGS__); } while (0)
+    do { if (log_id[log_id_].enable) {fprintf(stdout, "%s "fmt_, fmt_timestamp(), ##__VA_ARGS__);} } while (0)
 
 extern struct log_id_ log_id[];
 extern void log_enable(char *);
