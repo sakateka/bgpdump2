@@ -204,6 +204,8 @@ bgpdump_fsm_change (struct bgp_session_ *session, state_t new_state)
 
 /*
  * Flush the write buffer.
+ * return 0 if buffer is empty and if the buffer has been fully drained.
+ * return 1 if there is still some data lurking in the buffer.
  */
 int
 bgpdump_fflush (struct bgp_session_ *session)
@@ -241,7 +243,7 @@ bgpdump_fflush (struct bgp_session_ *session)
 	LOG(IO, "Full write %u bytes buffer to %s\n", res, blaster_addr);
 	session->write_idx = 0;
 	session->stats.octets_sent += res;
-	return 1;
+	return 0;
     }
 
     /*
@@ -277,6 +279,25 @@ bgpdump_push_prefix(struct bgp_session_ *session, struct bgp_prefix_ *prefix)
 	}
     }
     session->stats.prefixes_sent++;
+}
+
+/*
+ * Drain the write buffer. Re-schedule until the buffer is empty.
+ */
+void
+bgpdump_drain_cb (struct timer_ *timer)
+{
+    struct bgp_session_ *session;
+
+    session = (struct bgp_session_ *)timer->data;
+
+    if (bgpdump_fflush(session)) {
+
+	/*
+	 * Re-schedule.
+	 */
+	session->write_job = timer_add("write_job", 0, 50 * MSEC, session, bgpdump_drain_cb);
+    }
 }
 
 void
@@ -374,7 +395,14 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		    session->stats.octets_sent);
 
 		LOG(NORMAL, "End-of-RIB\n");
-		bgpdump_fflush(session);
+
+		if (bgpdump_fflush(session)) {
+
+		    /*
+		     * Re-schedule.
+		     */
+		    session->write_job = timer_add("write_job", 0, 50 * MSEC, session, bgpdump_drain_cb);
+		}
 		return;
 	    }
 	    continue;
@@ -465,13 +493,12 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
     /*
      * Start the write loop.
      */
-    if (bgpdump_fflush(session)) {
+    bgpdump_fflush(session);
 
-	/*
-	 * Re-schedule.
-	 */
-	session->write_job = timer_add("write_job", 0, 50 * MSEC, session, bgpdump_ribwalk_cb);
-    }
+    /*
+     * Re-schedule.
+     */
+    session->write_job = timer_add("write_job", 0, 50 * MSEC, session, bgpdump_ribwalk_cb);
 }
 
 /*
