@@ -40,7 +40,8 @@ struct __attribute__((__packed__)) timer_
     void *data; /* Misc. data */
     void (*cb)(struct timer_ *); /* Callback function. */
     struct timespec expire; /* Expiration interval */
-    uint delete:1;
+    uint delete:1,
+	expired:1;
 };
 
 struct __attribute__((__packed__)) bgp_session_
@@ -50,10 +51,14 @@ struct __attribute__((__packed__)) bgp_session_
     struct sockaddr_in sockaddr_in; /* XXX v6 */
 
     struct timer_ *connect_timer;
+    struct timer_ *send_open_timer;
     struct timer_ *open_sent_timer;
     struct timer_ *keepalive_timer;
     struct timer_ *hold_timer;
     struct timer_ *close_timer;
+
+    uint peer_holdtime;
+    uint peer_as;
 
     /* write buffer */
     struct timer_ *write_job;
