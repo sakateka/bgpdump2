@@ -127,7 +127,7 @@ void bgpdump_ribwalk_cb(struct timer_ *);
 void bgpdump_rebase_read_buffer(struct bgp_session_ *);
 void push_be_uint(struct bgp_session_ *, uint, unsigned long long);
 void write_be_uint (u_char *, uint, unsigned long long);
-struct timer_ *timer_add (char *, time_t, long, void *, void (*));
+void timer_add (struct timer_ **, char *, time_t, long, void *, void (*));
 
 /*
  * Format the logging timestamp.
@@ -296,7 +296,7 @@ bgpdump_drain_cb (struct timer_ *timer)
 	/*
 	 * Re-schedule.
 	 */
-	session->write_job = timer_add("write_job", 0, 50 * MSEC, session, bgpdump_drain_cb);
+	timer_add(&session->write_job, "write_job", 0, 50 * MSEC, session, bgpdump_drain_cb);
     }
 }
 
@@ -335,7 +335,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    session->ribwalk_prefix_index = 0;
 
 	    /* re-schedule */
-	    session->write_job = timer_add("write_job", 1, 0, session, bgpdump_ribwalk_cb);
+	    timer_add(&session->write_job, "write_job", 1, 0, session, bgpdump_ribwalk_cb);
 	    return;
 	}
 
@@ -401,7 +401,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		    /*
 		     * Re-schedule.
 		     */
-		    session->write_job = timer_add("write_job", 0, 50 * MSEC, session, bgpdump_drain_cb);
+		    timer_add(&session->write_job, "write_job", 0, 50 * MSEC, session, bgpdump_drain_cb);
 		}
 		return;
 	    }
@@ -498,7 +498,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
     /*
      * Re-schedule.
      */
-    session->write_job = timer_add("write_job", 0, 50 * MSEC, session, bgpdump_ribwalk_cb);
+    timer_add(&session->write_job, "write_job", 0, 50 * MSEC, session, bgpdump_ribwalk_cb);
 }
 
 /*
@@ -592,11 +592,20 @@ push_mp_capability (struct bgp_session_ *session, uint afi, uint safi)
     write_be_uint(session->write_buf+cap_idx-1, 1, length); /* overwrite Cap length */
 }
 
+uint32_t
+get_my_as (void)
+{
+    if (autsiz) {
+	return autnums[0];
+    } else {
+	return 65535;
+    }
+}
+
 void
 push_as4_capability (struct bgp_session_ *session)
 {
-    uint cap_idx, length, my_as;
-
+    uint cap_idx, length;
 
     /* Capability */
     push_be_uint(session, 1, 2); /* Cap code */
@@ -609,12 +618,7 @@ push_as4_capability (struct bgp_session_ *session)
     push_be_uint(session, 1, 65);
     push_be_uint(session, 1, 4); /* length to encode my AS4 */
 
-    if (autsiz) {
-	my_as = autnums[0];
-    } else {
-	my_as = 65535;
-    }
-    push_be_uint(session, 4, my_as); /* my AS */
+    push_be_uint(session, 4, get_my_as()); /* my AS */
 
     /*
      * Calculate Capability length field.
@@ -659,7 +663,7 @@ push_keepalive_message (struct bgp_session_ *session)
 void
 push_open_message (struct bgp_session_ *session)
 {
-    uint open_start_idx, length, opt_parms_idx, opt_parms_length;
+    uint open_start_idx, length, opt_parms_idx, opt_parms_length, my_as;
 
     open_start_idx = session->write_idx;
 
@@ -670,7 +674,13 @@ push_open_message (struct bgp_session_ *session)
     push_be_uint(session, 1, BGP_MSG_OPEN); /* message type */
 
     push_be_uint(session, 1, 4); /* version 4 */
-    push_be_uint(session, 2, 23456); /* my AS */
+
+    my_as = get_my_as();
+    if (my_as > 65535) {
+	push_be_uint(session, 2, 23456); /* my AS */
+    } else {
+	push_be_uint(session, 2, my_as); /* my AS */
+    }
     push_be_uint(session, 2, 90); /* holdtime */
     push_be_uint(session, 4, 0x01020304); /* BGP ID 1.2.3.4 */
 
@@ -741,19 +751,32 @@ timer_set_expire (struct timer_ *timer, time_t sec, long nsec)
 	timer->expire.tv_nsec -= 1000000000;
 	timer->expire.tv_sec++;
     }
+    timer->expired = false;
 }
 
 /*
  * Enqueue a callback function onto the timer list.
  */
-struct timer_ *
-timer_add (char *name, time_t sec, long nsec, void *data, void (*cb))
+void
+timer_add (struct timer_ **ptimer, char *name, time_t sec, long nsec, void *data, void (*cb))
 {
     struct timer_ *timer;
 
+
+    timer = *ptimer;
+
+    /*
+     * This timer already exists. reset and exit.
+     */
+    if (timer) {
+	timer_set_expire(timer, sec, nsec);
+	LOG(TIMER, "Reset %s timer, expire in %lu.%06lu s\n", timer->name, sec, nsec/1000);
+	return;
+    }
+
     timer = calloc(1, sizeof(struct timer_));
     if (!timer) {
-	return NULL;
+	return;
     }
 
     /*
@@ -766,9 +789,9 @@ timer_add (char *name, time_t sec, long nsec, void *data, void (*cb))
     timer_set_expire(timer, sec, nsec);
 
     CIRCLEQ_INSERT_TAIL(&timer_qhead, timer, timer_qnode);
-    LOG(TIMER, "Add %s timer, expire in %lus %luns\n", timer->name, sec, nsec);
+    LOG(TIMER, "Add %s timer, expire in %lus.%06lu s\n", timer->name, sec, nsec/1000);
 
-    return timer;
+    *ptimer = timer;
 }
 
 /*
@@ -830,6 +853,8 @@ timer_walk (void)
 	     */
 	    if ((timer_compare(&timer->expire, &now) == -1) && timer->cb) {
 
+		timer->expired = true;
+
 		/*
 		 * We may destroy our walking point. Prefetch the next node.
 		 */
@@ -843,8 +868,10 @@ timer_walk (void)
 		    (*timer->cb)(timer);
 		}
 
-		CIRCLEQ_REMOVE(&timer_qhead, timer, timer_qnode);
-		free(timer);
+		if (timer->expired || timer->delete) {
+		    CIRCLEQ_REMOVE(&timer_qhead, timer, timer_qnode);
+		    free(timer);
+		}
 
 		/*
 		 * End of queue ?
@@ -928,6 +955,7 @@ bgpdump_close_session_cb (struct timer_ *timer)
      * Kill our timers and jobs.
      */
     timer_del(&session->connect_timer);
+    timer_del(&session->send_open_timer);
     timer_del(&session->open_sent_timer);
     timer_del(&session->keepalive_timer);
     timer_del(&session->hold_timer);
@@ -946,7 +974,7 @@ bgpdump_close_session_cb (struct timer_ *timer)
     /*
      * Try to re-establish in 5s.
      */
-    session->connect_timer = timer_add("connect_retry", 5, 0, session, &bgpdump_connect_session_cb);
+    timer_add(&session->connect_timer, "connect_retry", 5, 0, session, &bgpdump_connect_session_cb);
 }
 
 /*
@@ -966,9 +994,7 @@ bgpdump_send_keepalive_cb (struct timer_ *timer)
      * Reschedule the keepalive timer.
      */
     if (session->state == ESTABLISHED) {
-	session->keepalive_timer = timer_add("keepalive", 30, 0, session, bgpdump_send_keepalive_cb);
-    } else {
-	session->keepalive_timer = NULL;
+	timer_add(&session->keepalive_timer, "keepalive", 30, 0, session, bgpdump_send_keepalive_cb);
     }
 }
 
@@ -990,13 +1016,13 @@ bgpdump_send_open_cb (struct timer_ *timer)
      * Kill the session after 10s.
      * Once an open message is received this timer needs to be stopped.
      */
-    session->open_sent_timer = timer_add("open_sent", 10, 0, session, &bgpdump_close_session_cb);
+    timer_add(&session->open_sent_timer, "open_sent", 10, 0, session, &bgpdump_close_session_cb);
     bgpdump_fsm_change(session, OPENSENT);
 
     /*
      * Start the read job.
      */
-    session->read_job = timer_add("read_job", 0, 0, session, bgpdump_read_cb);
+    timer_add(&session->read_job, "read_job", 0, 0, session, bgpdump_read_cb);
 }
 
 void
@@ -1098,7 +1124,7 @@ bgpdump_connect_session_cb (struct timer_ *timer)
 		    }
 		    #endif
 
-		    timer_add("send_open", 0, 0, session, &bgpdump_send_open_cb);
+		    timer_add(&session->send_open_timer, "send_open", 0, 0, session, &bgpdump_send_open_cb);
 		    break;
 		} else {
 
@@ -1107,7 +1133,7 @@ bgpdump_connect_session_cb (struct timer_ *timer)
 		    session->sockfd = -1;
 
 		    /* did not work, retry in 5s */
-		    timer_add("connect_retry", 5, 0, session, &bgpdump_connect_session_cb);
+		    timer_add(&session->connect_timer, "connect", 5, 0, session, &bgpdump_connect_session_cb);
 		    return;
 		}
 	    } while (1);
@@ -1153,7 +1179,11 @@ bgpdump_read (struct bgp_session_ *session)
 	    push_keepalive_message(session);
 	    bgpdump_fflush(session);
 
-	    session->keepalive_timer = timer_add("keepalive", 30, 0, session, bgpdump_send_keepalive_cb);
+	    session->peer_as = read_be_uint(session->read_buf_start+20, 2);
+	    session->peer_holdtime = read_be_uint(session->read_buf_start+22, 2);
+	    LOG(NORMAL, "  Peer AS %u, holdtime %us\n", session->peer_as, session->peer_holdtime);
+
+	    timer_add(&session->keepalive_timer, "keepalive", 30, 0, session, bgpdump_send_keepalive_cb);
 	    break;
 
 	case BGP_MSG_NOTIFICATION:
@@ -1192,24 +1222,32 @@ bgpdump_read (struct bgp_session_ *session)
 	    }
 
 	    /* restart session */
-	    session->close_timer = timer_add("restart_session", 0, 0, session, &bgpdump_close_session_cb);
+	    timer_add(&session->close_timer, "restart_session", 0, 0, session, &bgpdump_close_session_cb);
 	    return;
 
 	case BGP_MSG_KEEPALIVE:
 	    bgpdump_fsm_change(session, ESTABLISHED);
 
 	    /* reset hold timer */
-	    timer_del(&session->hold_timer);
-	    session->hold_timer = timer_add("holdtime", 90, 0, session, &bgpdump_close_session_cb);
+	    if (session->peer_holdtime) {
+		timer_add(&session->hold_timer, "holdtime", session->peer_holdtime, 0,
+			  session, &bgpdump_close_session_cb);
+	    }
 
 	    /*
 	     * Start the walk job.
 	     */
-	    session->write_job = timer_add("write_job", 1, 0, session, bgpdump_ribwalk_cb);
+	    timer_add(&session->write_job, "write_job", 1, 0, session, bgpdump_ribwalk_cb);
 	    break;
 
 	case BGP_MSG_UPDATE:
 	    /* ignore */
+
+	    /* reset hold timer */
+	    if (session->peer_holdtime) {
+		timer_add(&session->hold_timer, "holdtime", session->peer_holdtime, 0,
+			  session, &bgpdump_close_session_cb);
+	    }
 	    break;
 
 	default:
@@ -1256,7 +1294,7 @@ bgpdump_read_cb (struct timer_ *timer)
 	    }
 
 	    /* Re-schedule read job*/
-	    session->read_job = timer_add("read_job", 1, 0, session, bgpdump_read_cb);
+	    timer_add(&session->read_job, "read_job", 1, 0, session, bgpdump_read_cb);
 	    break;
 	}
 
@@ -1340,7 +1378,7 @@ bgpdump_blaster (void)
     /*
      * Enqueue a connect event immediatly.
      */
-    timer_add("connect_retry", 0, 0, session, &bgpdump_connect_session_cb);
+    timer_add(&session->connect_timer, "connect", 0, 0, session, &bgpdump_connect_session_cb);
 
     /*
      * Block SIGPIPE. This happens when a session disconnects.
