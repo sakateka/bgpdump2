@@ -195,7 +195,7 @@ bgpdump_fsm_change (struct bgp_session_ *session, state_t new_state)
 
     inet_ntop(session->sockaddr_in.sin_family, &session->sockaddr_in.sin_addr,
 	      session_addr, sizeof(session_addr));
-    LOG(FSM, "neighbor %s state change from %s -> %s\n", session_addr,
+    LOG(FSM, "Neighbor %s state change from %s -> %s\n", session_addr,
 	keyval_get_key(bgp_fsm_state_names, session->state),
 	keyval_get_key(bgp_fsm_state_names, new_state));
 
@@ -770,7 +770,7 @@ timer_add (struct timer_ **ptimer, char *name, time_t sec, long nsec, void *data
      */
     if (timer) {
 	timer_set_expire(timer, sec, nsec);
-	LOG(TIMER, "Reset %s timer, expire in %lu.%06lu s\n", timer->name, sec, nsec/1000);
+	LOG(TIMER, "Reset %s timer, expire in %lu.%06lus\n", timer->name, sec, nsec/1000);
 	return;
     }
 
@@ -789,8 +789,9 @@ timer_add (struct timer_ **ptimer, char *name, time_t sec, long nsec, void *data
     timer_set_expire(timer, sec, nsec);
 
     CIRCLEQ_INSERT_TAIL(&timer_qhead, timer, timer_qnode);
-    LOG(TIMER, "Add %s timer, expire in %lus.%06lu s\n", timer->name, sec, nsec/1000);
+    LOG(TIMER, "Add %s timer, expire in %lu.%06lus\n", timer->name, sec, nsec/1000);
 
+    timer->ptimer = ptimer;
     *ptimer = timer;
 }
 
@@ -869,6 +870,11 @@ timer_walk (void)
 		}
 
 		if (timer->expired || timer->delete) {
+		    LOG(TIMER, "Free %s timer\n", timer->name);
+
+		    if (timer->ptimer) {
+			*timer->ptimer = NULL;
+		    }
 		    CIRCLEQ_REMOVE(&timer_qhead, timer, timer_qnode);
 		    free(timer);
 		}
