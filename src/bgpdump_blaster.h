@@ -38,6 +38,7 @@ struct __attribute__((__packed__)) timer_
     CIRCLEQ_ENTRY(timer_) timer_qnode;
     char name[16];
     void *data; /* Misc. data */
+    struct timer_ **ptimer;
     void (*cb)(struct timer_ *); /* Callback function. */
     struct timespec expire; /* Expiration interval */
     uint delete:1,
