@@ -296,7 +296,7 @@ bgpdump_drain_cb (struct timer_ *timer)
 	/*
 	 * Re-schedule.
 	 */
-	timer_add(&session->write_job, "write_job", 0, 50 * MSEC, session, bgpdump_drain_cb);
+	timer_add(&session->write_job, "write_job", 0, 20 * MSEC, session, bgpdump_drain_cb);
     }
 }
 
@@ -335,17 +335,36 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    session->ribwalk_prefix_index = 0;
 
 	    /* re-schedule */
-	    timer_add(&session->write_job, "write_job", 1, 0, session, bgpdump_ribwalk_cb);
+	    timer_add(&session->write_job, "write_job", 0, 20 * MSEC, session, bgpdump_ribwalk_cb);
 	    return;
 	}
 
-	LOG(NORMAL, "RIB for peer-index %d: %u ipv4 prefixes, %u ipv6 prefixes, %u paths\n",
+	LOG(NORMAL, "RIB for peer-index %d: AS %u, ipv4 prefixes %u, ipv6 prefixes %u, %u paths\n",
 	    peer_index,
+	    peer_table[peer_index].asnumber,
 	    peer_table[peer_index].ipv4_count,
 	    peer_table[peer_index].ipv6_count,
 	    peer_table[peer_index].path_count);
 
 	session->ribwalk_pnode = ptree_head(t);
+
+	/*
+	 * When we dump to a file it's time to open it.
+	 */
+	if (blaster_dump) {
+	    char filename[64];
+	    snprintf(filename, sizeof(filename), "peer%u-asn%u.bgp", peer_index, peer_table[peer_index].asnumber);
+	    session->file = fopen(filename, "w");
+	    if (!session->file) {
+		LOG(ERROR, "Could not open blaster dump file %s", filename);
+		return;
+	    }
+	    session->sockfd = fileno(session->file);
+	    if (session->sockfd == -1) {
+		LOG(ERROR, "Could not set FD for blaster dump file %s", filename);
+		return;
+	    }
+	}
     }
 
     if (session->write_idx > (BGP_WRITEBUFSIZE - BGP_MAX_MESSAGE_SIZE)) {
@@ -401,7 +420,15 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		    /*
 		     * Re-schedule.
 		     */
-		    timer_add(&session->write_job, "write_job", 0, 50 * MSEC, session, bgpdump_drain_cb);
+		    timer_add(&session->write_job, "write_job", 0, 20 * MSEC, session, bgpdump_drain_cb);
+		    return;
+		}
+
+		/*
+		 * In blaster dump mode advance to the next RIB>
+		 */
+		if (blaster_dump && !session->ribwalk_complete) {
+		    timer_add(&session->write_job, "write_job", 0, 20 * MSEC, session, bgpdump_drain_cb);
 		}
 		return;
 	    }
@@ -498,7 +525,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
     /*
      * Re-schedule.
      */
-    timer_add(&session->write_job, "write_job", 0, 50 * MSEC, session, bgpdump_ribwalk_cb);
+    timer_add(&session->write_job, "write_job", 0, 20 * MSEC, session, bgpdump_ribwalk_cb);
 }
 
 /*
@@ -1381,10 +1408,20 @@ bgpdump_blaster (void)
     log_id[ERROR].enable = true;
     log_id[FSM].enable = true;
 
-    /*
-     * Enqueue a connect event immediatly.
-     */
-    timer_add(&session->connect_timer, "connect", 0, 0, session, &bgpdump_connect_session_cb);
+    if (blaster_dump) {
+
+	/*
+	 * In case of blaster_dump option we'll just dump the BGP stream into a file.
+	 */
+	timer_add(&session->write_job, "write_job", 0, 0, session, bgpdump_ribwalk_cb);
+
+    } else {
+
+	/*
+	 * Enqueue a connect event immediatly.
+	 */
+	timer_add(&session->connect_timer, "connect", 0, 0, session, &bgpdump_connect_session_cb);
+    }
 
     /*
      * Block SIGPIPE. This happens when a session disconnects.

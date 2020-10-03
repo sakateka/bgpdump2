@@ -39,7 +39,7 @@ extern int optopt;
 extern int opterr;
 extern int optreset;
 
-const char *optstring = "hVvdmbPp:a:uUrcjJ:kN:M:gl:L:46H:qf:G:B:S:t:";
+const char *optstring = "hVvdmbPp:a:uUrcjJ:kN:M:gl:L:46H:qf:G:B:S:t:D";
 const struct option longopts[] =
 {
   { "help",         no_argument,       NULL, 'h' },
@@ -49,6 +49,7 @@ const struct option longopts[] =
   { "compat-mode",  no_argument,       NULL, 'm' },
   { "brief",        no_argument,       NULL, 'b' },
   { "blaster",      required_argument, NULL, 'B' },
+  { "blaster-dump", no_argument,       NULL, 'D' },
   { "next-hop-self",required_argument, NULL, 'S' },
   { "quite",        no_argument,       NULL, 'q' },
   { "json",         optional_argument, NULL, 'J' },
@@ -83,6 +84,7 @@ const char opthelp[] = "\
 -m, --compat-mode         Display in libbgpdump -m compatible mode.\n\
 -b, --brief               List information (i.e., simple prefix-nexthops).\n\
 -B, --blaster <addr>      Blast RIB to a BGP speaker.\n\
+-D, --blaster-dump        Blast BGP stream to a file.\n\
 -S, --next-hop-self <addr> Overwrite nexthop attribute.\n\
 -J, --json <URL>          Dump routes as RtBrick JSON schema into BDS REST API.\n\
 -G, --peer-group <name>   Peer group table name. In combination with --json option\n\
@@ -142,6 +144,7 @@ int json_port = 19091;
 int localpref = -1;
 int blaster = 0;
 char *blaster_addr = NULL;
+int blaster_dump = 0;
 int nhs = 0;
 struct in_addr nhs_addr;
 
@@ -305,6 +308,9 @@ bgpdump_getopt (int argc, char **argv)
           blaster++;
           blaster_addr = optarg;
           break;
+	case 'D':
+	  blaster_dump++;
+	  break;
         case 'S':
           nhs = inet_aton(optarg, &nhs_addr);
           break;
