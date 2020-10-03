@@ -47,6 +47,7 @@ struct __attribute__((__packed__)) timer_
 
 struct __attribute__((__packed__)) bgp_session_
 {
+    FILE *file;
     int sockfd;
     state_t state;
     struct sockaddr_in sockaddr_in; /* XXX v6 */

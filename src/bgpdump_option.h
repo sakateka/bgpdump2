@@ -49,6 +49,7 @@ extern int json_port;
 extern char *json_peergroup;
 extern int localpref;
 extern int blaster;
+extern int blaster_dump;
 extern char *blaster_addr;
 extern int nhs;
 extern struct in_addr nhs_addr;

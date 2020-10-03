@@ -690,7 +690,7 @@ main (int argc, char **argv)
       json_close_all();
   }
 
-  if (blaster) {
+  if (blaster || blaster_dump) {
       bgpdump_blaster();
   }
 
