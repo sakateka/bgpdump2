@@ -939,7 +939,7 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
         }
 #else
 
-      if (peer_spec_size && (!blaster || !blaster_dump))
+      if (peer_spec_size && (!blaster && !blaster_dump))
         {
           struct bgp_route *rp;
           int *route_size = &peer_route_size[peer_spec_i];
