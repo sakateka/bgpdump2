@@ -796,6 +796,8 @@ timer_add (struct timer_ **ptimer, char *name, time_t sec, long nsec, void *data
      * This timer already exists. reset and exit.
      */
     if (timer) {
+	timer->cb = cb;
+	timer->data = data;
 	timer_set_expire(timer, sec, nsec);
 	LOG(TIMER, "Reset %s timer, expire in %lu.%06lus\n", timer->name, sec, nsec/1000);
 	return;
