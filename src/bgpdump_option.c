@@ -39,7 +39,7 @@ extern int optopt;
 extern int opterr;
 extern int optreset;
 
-const char *optstring = "hVvdmbPp:a:uUrcjJ:kN:M:gl:L:46H:qf:G:B:S:t:D";
+const char *optstring = "hVvdmbPp:a:uUrcjJ:kN:M:gl:L:46H:qf:G:B:S:t:DT:";
 const struct option longopts[] =
 {
   { "help",         no_argument,       NULL, 'h' },
@@ -73,6 +73,7 @@ const struct option longopts[] =
   { "ipv6",         no_argument,       NULL, '6' },
   { "heatmap",      required_argument, NULL, 'H' },
   { "log",          required_argument, NULL, 't' },
+  { "prefix-limit", required_argument, NULL, 'T' },
   { NULL,           0,                 NULL, 0   }
 };
 
@@ -85,6 +86,7 @@ const char opthelp[] = "\
 -b, --brief               List information (i.e., simple prefix-nexthops).\n\
 -B, --blaster <addr>      Blast RIB to a BGP speaker.\n\
 -D, --blaster-dump        Blast BGP stream to a file.\n\
+-T, --prefix-limit        Prefix limit for Blaster mode.\n\
 -S, --next-hop-self <addr> Overwrite nexthop attribute.\n\
 -J, --json <URL>          Dump routes as RtBrick JSON schema into BDS REST API.\n\
 -G, --peer-group <name>   Peer group table name. In combination with --json option\n\
@@ -145,6 +147,7 @@ int localpref = -1;
 int blaster = 0;
 char *blaster_addr = NULL;
 int blaster_dump = 0;
+int prefix_limit = 0;
 int nhs = 0;
 struct in_addr nhs_addr;
 
@@ -311,6 +314,9 @@ bgpdump_getopt (int argc, char **argv)
 	case 'D':
 	  blaster_dump++;
 	  break;
+        case 'T':
+          prefix_limit = strtoul(optarg, &endptr, 0);
+          break;
         case 'S':
           nhs = inet_aton(optarg, &nhs_addr);
           break;

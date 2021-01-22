@@ -893,7 +893,11 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
 	if (nhs) {
 	  bgpdump_rewrite_nh(p, attribute_length);
 	}
-	bgpdump_add_prefix(&route, peer_index, p, attribute_length);
+	if (prefix_limit && peer_table[peer_index].ipv4_count < prefix_limit) {
+	  bgpdump_add_prefix(&route, peer_index, p, attribute_length);
+	} else if (!prefix_limit) {
+	  bgpdump_add_prefix(&route, peer_index, p, attribute_length);
+	}
       }
 
       /* Now all the BGP attributes for this rib_entry are processed. */
