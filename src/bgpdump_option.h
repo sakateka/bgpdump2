@@ -53,6 +53,7 @@ extern int blaster_dump;
 extern char *blaster_addr;
 extern int nhs;
 extern struct in_addr nhs_addr;
+extern int prefix_limit;
 
 extern unsigned long long bufsiz;
 extern unsigned long long nroutes;
