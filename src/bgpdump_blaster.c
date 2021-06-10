@@ -187,15 +187,11 @@ keyval_get_key (struct keyval_ *keyval, int val)
 void
 bgpdump_fsm_change (struct bgp_session_ *session, state_t new_state)
 {
-    char session_addr[40];
-
     if (session->state == new_state) {
 	return;
     }
 
-    inet_ntop(session->sockaddr_in.sin_family, &session->sockaddr_in.sin_addr,
-	      session_addr, sizeof(session_addr));
-    LOG(FSM, "Neighbor %s state change from %s -> %s\n", session_addr,
+    LOG(FSM, "Neighbor %s state change from %s -> %s\n", blaster_addr,
 	keyval_get_key(bgp_fsm_state_names, session->state),
 	keyval_get_key(bgp_fsm_state_names, new_state));
 
@@ -352,8 +348,16 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	 * When we dump to a file it's time to open it.
 	 */
 	if (blaster_dump) {
-	    char filename[64];
-	    snprintf(filename, sizeof(filename), "peer%u-asn%u.bgp", peer_index, peer_table[peer_index].asnumber);
+	    char filename[128];
+	    char bgp_id[sizeof("255.255.255.255")];
+	    char ip_addr[sizeof("255.255.255.255")];
+	    struct peer *my_peer;
+
+	    my_peer = &peer_table[peer_index];
+	    inet_ntop(AF_INET, &my_peer->bgp_id, bgp_id, sizeof(bgp_id));
+	    inet_ntop(AF_INET, &my_peer->ipv4_addr, ip_addr, sizeof(ip_addr));
+	    snprintf(filename, sizeof(filename), "peer%u-asn%u-bgpid%s-ip%s.bgp",
+		     peer_index, my_peer->asnumber, bgp_id, ip_addr);
 	    session->file = fopen(filename, "w");
 	    if (!session->file) {
 		LOG(ERROR, "Could not open blaster dump file %s", filename);
@@ -1063,25 +1067,31 @@ bgpdump_send_open_cb (struct timer_ *timer)
 void
 bgpdump_connect_session_cb (struct timer_ *timer)
 {
-
-    struct bgp_session_ *session;
-    char       protoname[] = "tcp";
-    in_addr_t  in_addr;
-
     struct protoent *protoent;
-    struct hostent *hostent;
+    struct bgp_session_ *session;
+    char protoname[] = "tcp";
+    int af, res;
 
     session = (struct bgp_session_ *)timer->data;
 
-    memset(&session->sockaddr_in, 0, sizeof(session->sockaddr_in));
+    memset(&session->addr4, 0, sizeof(session->addr4));
+    memset(&session->addr6, 0, sizeof(session->addr6));
     memset(&session->stats, 0, sizeof(session->stats));
+
+    /* First figure out what addr family the socket shall be */
+    af = 0;
+    if (inet_pton(AF_INET, blaster_addr, &session->addr4.sin_addr)) {
+	af = AF_INET;
+    } else if (inet_pton(AF_INET6, blaster_addr, &session->addr6.sin6_addr)) {
+	af = AF_INET6;
+    }
 
     /* Get socket. */
     protoent = getprotobyname(protoname);
     if (!protoent) {
         return;
     }
-    session->sockfd = socket(AF_INET, SOCK_STREAM, protoent->p_proto);
+    session->sockfd = socket(af, SOCK_STREAM, protoent->p_proto);
     if (session->sockfd == -1) {
         return;
     }
@@ -1089,25 +1099,26 @@ bgpdump_connect_session_cb (struct timer_ *timer)
     /* Set socket to non blocking */
     fcntl(session->sockfd, F_SETFL, fcntl(session->sockfd, F_GETFL, 0) | O_NONBLOCK);
 
-    /* Prepare sockaddr_in. */
-    hostent = gethostbyname(blaster_addr);
-    if (!hostent) {
-        return;
-    }
-
-    in_addr = inet_addr(inet_ntoa(*(struct in_addr*)*(hostent->h_addr_list)));
-    if (in_addr == (in_addr_t)-1) {
-        return;
-    }
-
-    session->sockaddr_in.sin_addr.s_addr = in_addr;
-    session->sockaddr_in.sin_family = AF_INET;
-    session->sockaddr_in.sin_port = htons(BGP_TCP_PORT);
-
     bgpdump_fsm_change(session, CONNECT);
 
+    res = 0;
+    switch (af) {
+    case AF_INET:
+	session->addr4.sin_family = AF_INET;
+	session->addr4.sin_port = htons(BGP_TCP_PORT);
+
+	res = connect(session->sockfd, (struct sockaddr*)&session->addr4, sizeof(session->addr4));
+	break;
+    case AF_INET6:
+	session->addr6.sin6_family = AF_INET6;
+	session->addr6.sin6_port = htons(BGP_TCP_PORT);
+
+	res = connect(session->sockfd, (struct sockaddr*)&session->addr6, sizeof(session->addr6));
+	break;
+    }
+
     /* Do the actual connection. */
-    if (connect(session->sockfd, (struct sockaddr*)&session->sockaddr_in, sizeof(session->sockaddr_in)) < 0) {
+    if (res < 0) {
 
 	int res;
 	fd_set myset;
@@ -1183,7 +1194,6 @@ void
 bgpdump_read (struct bgp_session_ *session)
 {
     uint size, length, type;
-    char session_addr[40];
 
     while (1) {
 	size = session->read_buf_end - session->read_buf_start;
@@ -1200,10 +1210,8 @@ bgpdump_read (struct bgp_session_ *session)
 	    break;
 	}
 
-	inet_ntop(session->sockaddr_in.sin_family, &session->sockaddr_in.sin_addr,
-		  session_addr, sizeof(session_addr));
 	LOG(NORMAL, "Read %s message (%u), length %u from %s\n",
-	    keyval_get_key(bgp_msg_names, type), type, length, session_addr);
+	    keyval_get_key(bgp_msg_names, type), type, length, blaster_addr);
 
 	switch (type) {
 	case BGP_MSG_OPEN:
