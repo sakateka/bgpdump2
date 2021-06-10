@@ -50,7 +50,8 @@ struct __attribute__((__packed__)) bgp_session_
     FILE *file;
     int sockfd;
     state_t state;
-    struct sockaddr_in sockaddr_in; /* XXX v6 */
+    struct sockaddr_in addr4;
+    struct sockaddr_in6 addr6;
 
     struct timer_ *connect_timer;
     struct timer_ *send_open_timer;
