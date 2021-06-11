@@ -149,7 +149,8 @@ char *blaster_addr = NULL;
 int blaster_dump = 0;
 int prefix_limit = 0;
 int nhs = 0;
-struct in_addr nhs_addr;
+struct sockaddr_in nhs_addr4;
+struct sockaddr_in6 nhs_addr6;
 
 extern char *progname;
 extern int safi;
@@ -318,7 +319,11 @@ bgpdump_getopt (int argc, char **argv)
           prefix_limit = strtoul(optarg, &endptr, 0);
           break;
         case 'S':
-          nhs = inet_aton(optarg, &nhs_addr);
+	  if (inet_pton(AF_INET, optarg, &nhs_addr4.sin_addr)) {
+	      nhs = AF_INET;
+	  } else if (inet_pton(AF_INET6, optarg, &nhs_addr6.sin6_addr)) {
+	      nhs = AF_INET6;
+	  }
           break;
         case 't':
 	    log_enable(optarg);

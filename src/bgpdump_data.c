@@ -744,11 +744,25 @@ bgpdump_rewrite_nh (char *raw_path, uint16_t path_length)
     }
 
     switch (pa_type) {
-    case 3: /* next hop */
-      *pa = nhs_addr.s_addr;
-      *(pa+1) = nhs_addr.s_addr >> 8;
-      *(pa+2) = nhs_addr.s_addr >> 16;
-      *(pa+3) = nhs_addr.s_addr >> 24;;
+    case NEXT_HOP: /* ipv4 next hop */
+      if (nhs == AF_INET) {
+	memcpy(pa, &nhs_addr4.sin_addr, 4);
+      }
+      return;
+    case MP_REACH_NLRI:
+      {
+	uint16_t afi;
+	uint8_t safi, nh_len;
+
+	afi = *pa << 8 | *(pa+1);
+	safi = *(pa+2);
+	nh_len = *(pa+3);
+
+	/* ipv6 unicast */
+	if (nhs == AF_INET6 && afi == 2 && safi == 1 && nh_len == 16) {
+	  memcpy(pa+4, &nhs_addr6.sin6_addr, 16);
+	}
+      }
       return;
     default:
       break;
