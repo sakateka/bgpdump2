@@ -562,7 +562,7 @@ main (int argc, char **argv)
 
       while (1)
         {
-          ret = method->fread (buf + datalen, bufsiz - datalen, 1, file);
+          ret = method->fread (buf + datalen, 1, bufsiz - datalen, file);
           if (debug)
             printf ("read: %lu bytes to buf[%lu]. total %lu bytes\n",
                     ret, datalen, ret + datalen);
