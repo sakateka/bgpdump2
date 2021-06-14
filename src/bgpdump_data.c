@@ -178,7 +178,7 @@ bgpdump_table_v2_peer_entry (int index, char *p, char *data_end, int *retsize)
   if (show && (debug || detail))
     {
       printf ("Peer[%d]: Type: %s%s%s(%#02x) "
-              "BGP ID: %-15s AS: %-5d Address: %-15s\n",
+              "BGP ID: %-15s AS: %-5u Address: %-15s\n",
               index, (peer_type & FLAG_PEER_ADDRESS_IPV6 ? "ipv6" : ""),
               ((peer_type & FLAG_PEER_ADDRESS_IPV6) &&
                (peer_type & FLAG_AS_NUMBER_SIZE) ?
