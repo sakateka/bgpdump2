@@ -27,6 +27,7 @@
 #include <zlib.h>
 
 #include "bgpdump_file.h"
+#include "bgpdump_option.h"
 
 struct access_method methods[] =
 {
@@ -52,11 +53,12 @@ fread_wrap (void *ptr, size_t size, size_t nitems, void *file)
       fprintf (stderr, "fread error.\n");
       return 0;
     }
-  if (feof (file))
+  if (feof (file) && !ret)
     return 0;
 
-  ret *= size;
-  //printf ("fread: ret: %ld\n", ret);
+  if (debug) {
+      printf ("fread: ret: %ld\n", ret);
+  }
   return ret;
 }
 
