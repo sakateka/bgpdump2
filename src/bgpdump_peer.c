@@ -59,7 +59,7 @@ peer_print (struct peer *peer)
   inet_ntop (AF_INET, &peer->bgp_id, buf, sizeof (buf));
   inet_ntop (AF_INET, &peer->ipv4_addr, buf2, sizeof (buf2));
   inet_ntop (AF_INET6, &peer->ipv6_addr, buf3, sizeof (buf3));
-  printf ("%s asn:%d [%s|%s]", buf, peer->asnumber, buf2, buf3);
+  printf ("%s asn:%u [%s|%s]", buf, peer->asnumber, buf2, buf3);
 }
 
 void
