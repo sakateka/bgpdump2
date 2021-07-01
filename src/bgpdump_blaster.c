@@ -727,8 +727,10 @@ push_open_message (struct bgp_session_ *session)
     /*
      * MP capability for ipv4 and ipv6
      */
-    push_mp_capability(session, 1, 1);
-    push_mp_capability(session, 2, 1);
+    push_mp_capability(session, 1, 1); /* ipv4 unicast */
+    push_mp_capability(session, 2, 1); /* ipv6 unicast */
+    push_mp_capability(session, 1, 4); /* ipv4 labeled unicast */
+    push_mp_capability(session, 2, 4); /* ipv6 labeled unicast */
 
     /*
      * Calculate Optional parameters length field.
