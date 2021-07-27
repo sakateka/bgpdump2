@@ -1,47 +1,32 @@
-RTB-usage
-https://docs.google.com/document/d/1DsKQtDw7eEm1xFwf3nPlsurVs2F_csU9JSxD_G0WPsM/
-
-#example for an external peergroup
-% ./bgpdump2 -q -J http://192.168.202.121:19091/api/application-rest-proxy/rtbrick/bgp.appd.1/bds/object/add -p 1 -G leaf2 latest-bview.gz
-#example for an internal peergroup
-% ./bgpdump2 -q --localpref 200 -J http://192.168.200.50:19091/api/application-rest-proxy/rtbrick/bgp.iod.1/bds/object/add -p 1 -G ibgp latest-bview.gz
-
-* usage examples
-
-% ./src/bgpdump2 --help
-
-% ./src/bgpdump2 ../ribs/rib.20140817.1500.bz2
-
-% ./src/bgpdump2 ../ribs/rib.2014081{7,8}.1500.bz2
-
-% ./src/bgpdump2 ../ribs/rib.2014081{7,8}.1500.bz2 --count
-
-% ./src/bgpdump2 ../ribs/rib.20140817.1500.bz2 -k
-
-% ./src/bgpdump2 ../ribs/rib.20140817.1500.bz2 --peer 1
-
-% ./src/bgpdump2 ../ribs/rib.20140817.1500.bz2 -p 1 -l 8.8.8.8
-
-% ./src/bgpdump2 ../ribs/rib.20140817.1500.bz2 -p 1 -L <addr-file>
-
-% ./src/bgpdump2 ../ribs/rib.20140817.1500.bz2 -u -p 1 -p 2
-
-% ./src/bgpdump2 ../ribs/rib.20140817.1500.bz2 -u -r -p 1 -p 2
-
-udiff:
-<: the prefix is in left and unreachable in right (maybe partially).
-+: the prefix is only in right (but it is reachable in left).
-): the prefix is in right, and is covered by a shorter prefix in left
-   that is unreachable in right. (i.e., the shorter is '<')
->: the prefix is in right and unreachable in left (maybe partially).
--: the prefix is only in left (but it is reachable in right).
-(: the prefix is in left, and is covered by a shorter prefix in right
-   that is unreachable in left. (i.e., the shorter is '>')
-
-% ./src/bgpdump2 ../ribs/rib.20140817.1500.bz2 -U -r -p 1 -p 2
-
-verbose udiff:
-{: the prefix to compare is in the left peer.
-}: the prefix to compare is in the right peer.
-
-
+Usage: ./bgpdump2 [options] <file1> <file2> ...
+-h, --help                Display this help and exit.
+-V, --version             Print the program version.
+-v, --verbose             Print verbose information.
+-d, --debug               Display debug information.
+-m, --compat-mode         Display in libbgpdump -m compatible mode.
+-b, --brief               List information (i.e., simple prefix-nexthops).
+-B, --blaster <addr>      Blast RIB to a BGP speaker.
+-D, --blaster-dump        Blast BGP stream to a file.
+-T, --prefix-limit        Prefix limit for Blaster mode.
+-S, --next-hop-self <addr> Overwrite nexthop attribute.
+-P, --peer-table          Display the peer table and exit.
+-p, --peer <peer_index>   Specify peers by peer_index.
+                          At most 8 peers can be specified.
+-u, --diff                Shows unified diff. Specify two peers.
+-U, --diff-verbose        Shows the detailed info of unified diff.
+-r, --diff-table          Specify to create diff route_table.
+-c, --count               Count the route number.
+-j, --plen-dist           Count the route number by prefixlen.
+-k, --peer-stat           Shows prefix-length distribution.
+-N, --bufsiz              Specify the size of read buffer.
+                          (default: 16MiB)
+-M, --nroutes             Specify the size of the route_table.
+                          (default: 1000K)
+-g, --benchmark           Measure the time to lookup.
+-q, --quiet               Minimal verbosity output
+-l, --lookup <addr>       Specify lookup address.
+-L, --lookup-file <file>  Specify lookup address from a file.
+-4, --ipv4                Specify that the query is IPv4. (default)
+-6, --ipv6                Specify that the query is IPv6.
+-H, --heatmap <file-prefix> Produces the heatmap.
+-t, --log <log-name>      Turn on logging.
