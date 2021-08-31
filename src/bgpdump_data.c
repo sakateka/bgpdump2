@@ -36,7 +36,6 @@
 #include "bgpdump_data.h"
 #include "bgpdump_peerstat.h"
 #include "bgpdump_udiff.h"
-#include "bgpdump_json.h"
 
 extern struct bgp_route *diff_table[];
 extern struct ptree *diff_ptree[];
@@ -1004,9 +1003,6 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
         route_print (&route);
       else if (compat_mode && !quiet)
         route_print_compat (&route);
-
-      if (json_dump)
-	  route_print_json (&route, peer_index);
     }
 
   BUFFER_OVERRUN_CHECK(p, attribute_length, data_end)

@@ -46,7 +46,6 @@
 #include "bgpdump_ptree.h"
 #include "bgpdump_peer.h"
 #include "bgpdump_peerstat.h"
-#include "bgpdump_json.h"
 #include "bgpdump_blaster.h"
 
 extern int optind;
@@ -534,11 +533,6 @@ main (int argc, char **argv)
         }
     }
 
-  if (json_dump) {
-      json_open_socket();
-  }
-
-
   /* for each rib files. */
   for (i = 0; i < argc; i++)
     {
@@ -685,10 +679,6 @@ main (int argc, char **argv)
       peer_stat_show ();
       //peer_stat_finish ();
     }
-
-  if (json_dump) {
-      json_close_all();
-  }
 
   if (blaster || blaster_dump) {
       bgpdump_blaster();
