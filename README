@@ -9,6 +9,8 @@ Usage: ./bgpdump2 [options] <file1> <file2> ...
 -D, --blaster-dump        Blast BGP stream to a file.
 -T, --prefix-limit        Prefix limit for Blaster mode.
 -S, --next-hop-self <addr> Overwrite nexthop attribute.
+-a, --autnum <asn>        Blaster Mode. Specify ASN.
+                          At most 8 ASNs can be specified.
 -P, --peer-table          Display the peer table and exit.
 -p, --peer <peer_index>   Specify peers by peer_index.
                           At most 8 peers can be specified.
