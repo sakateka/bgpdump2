@@ -91,6 +91,8 @@ const char opthelp[] = "\
 -J, --json <URL>          Dump routes as RtBrick JSON schema into BDS REST API.\n\
 -G, --peer-group <name>   Peer group table name. In combination with --json option\n\
 -f, --localpref           Set Local-Preference Attribute in RtBrick JSON export.\n\
+-a, --autnum <asn>        Blaster Mode. Specify ASN.\n\
+                          At most %d ASNs can be specified.\n\
 -P, --peer-table          Display the peer table and exit.\n\
 -p, --peer <peer_index>   Specify peers by peer_index.\n\
                           At most %d peers can be specified.\n\
@@ -163,7 +165,7 @@ void
 usage ()
 {
   printf ("Usage: %s [options] <file1> <file2> ...\n", progname);
-  printf (opthelp, PEER_INDEX_MAX, BGPDUMP_BUFSIZ_DEFAULT,
+  printf (opthelp, PEER_INDEX_MAX, PEER_INDEX_MAX, BGPDUMP_BUFSIZ_DEFAULT,
           ROUTE_LIMIT_DEFAULT);
 }
 
