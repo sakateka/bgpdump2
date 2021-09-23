@@ -48,6 +48,7 @@ extern char *blaster_addr;
 extern int nhs;
 extern struct sockaddr_in nhs_addr4;
 extern struct sockaddr_in6 nhs_addr6;
+extern int withdraw_delay;
 extern int prefix_limit;
 
 extern unsigned long long bufsiz;

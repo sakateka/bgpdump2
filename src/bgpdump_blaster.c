@@ -34,6 +34,7 @@
 #include "bgpdump_blaster.h"
 
 /* Globals */
+
 CIRCLEQ_HEAD(timer_head_, timer_ ) timer_qhead; /* Timer root */
 struct log_id_ log_id[LOG_ID_MAX];
 
@@ -126,8 +127,9 @@ void bgpdump_read_cb(struct timer_ *);
 void bgpdump_ribwalk_cb(struct timer_ *);
 void bgpdump_rebase_read_buffer(struct bgp_session_ *);
 void push_be_uint(struct bgp_session_ *, uint, unsigned long long);
-void write_be_uint (u_char *, uint, unsigned long long);
-void timer_add (struct timer_ **, char *, time_t, long, void *, void (*));
+void write_be_uint(u_char *, uint, unsigned long long);
+void timer_add(struct timer_ **, char *, time_t, long, void *, void (*));
+void timespec_sub(struct timespec *, struct timespec *, struct timespec *);
 
 /*
  * Format the logging timestamp.
@@ -274,7 +276,12 @@ bgpdump_push_prefix(struct bgp_session_ *session, struct bgp_prefix_ *prefix)
 	    session->write_idx++;
 	}
     }
-    session->stats.prefixes_sent++;
+
+    if (session->ribwalk_withdraw) {
+	session->stats.prefixes_withdrawn++;
+    } else {
+	session->stats.prefixes_sent++;
+    }
 }
 
 /*
@@ -312,6 +319,20 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 
     if (session->ribwalk_complete) {
 	return;
+    }
+
+    if (withdraw_delay && session->ribwalk_withdraw) {
+	struct timespec now, diff;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	timespec_sub(&diff, &now, &session->eor_ts);
+
+	/* backoff if withdraw delay has not yet been reached */
+	if (diff.tv_sec < withdraw_delay) {
+	    LOG(NORMAL, "Delay withdraw generation for %lu secs\n", withdraw_delay - diff.tv_sec);
+	    timer_add(&session->write_job, "write_job", withdraw_delay, 0, session, bgpdump_ribwalk_cb);
+	    return;
+	}
     }
 
     if (!session->ribwalk_pnode) {
@@ -394,11 +415,30 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    /* All routes for this path have been encoded, progress to next path. */
 	    session->ribwalk_pnode = ptree_next(session->ribwalk_pnode);
 	    session->ribwalk_prefix_index = 0;
+
+	    /*
+	     * Is this the end of this RIB ?
+	     */
 	    if (!session->ribwalk_pnode) {
-		if (session->ribwalk_peer_index < peer_spec_size) {
-		    session->ribwalk_peer_index++;
-		} else {
-		    session->ribwalk_complete = true;
+
+		/*
+		 * Progress to next RIB
+		 * if no withdraws should be send or
+		 * withdraw sending of this RIB is complete.
+		 */
+		if (!withdraw_delay || (withdraw_delay && session->ribwalk_withdraw)) {
+		    if (session->ribwalk_peer_index < peer_spec_size) {
+			session->ribwalk_peer_index++;
+		    } else {
+			session->ribwalk_complete = true;
+		    }
+		}
+
+		/*
+		 * Toggle update/withdraw state
+		 */
+		if (withdraw_delay) {
+		    session->ribwalk_withdraw = ~session->ribwalk_withdraw;
 		}
 
 		/*
@@ -412,27 +452,23 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		push_be_uint(session, 2, 0); /* total path attributes length */
 		session->stats.updates_sent++;
 
-		LOG(NORMAL, "Sent %u updates, %u prefixes, %u octets\n",
+		bgpdump_fflush(session);
+		LOG(NORMAL, "Sent %u updates, %u prefixes sent, %u prefixes withdrawn, %u octets\n",
 		    session->stats.updates_sent,
 		    session->stats.prefixes_sent,
+		    session->stats.prefixes_withdrawn,
 		    session->stats.octets_sent);
 
+		clock_gettime(CLOCK_MONOTONIC, &session->eor_ts);
 		LOG(NORMAL, "End-of-RIB\n");
 
-		if (bgpdump_fflush(session)) {
-
-		    /*
-		     * Re-schedule.
-		     */
-		    timer_add(&session->write_job, "write_job", 0, 20 * MSEC, session, bgpdump_drain_cb);
-		    return;
-		}
-
 		/*
-		 * In blaster dump mode advance to the next RIB>
+		 * Re-schedule.
 		 */
-		if (blaster_dump && !session->ribwalk_complete) {
+		if (session->ribwalk_complete) {
 		    timer_add(&session->write_job, "write_job", 0, 20 * MSEC, session, bgpdump_drain_cb);
+		} else {
+		    timer_add(&session->write_job, "write_job", 0, 20 * MSEC, session, bgpdump_ribwalk_cb);
 		}
 		return;
 	    }
@@ -454,33 +490,45 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	push_be_uint(session, 8, 0xffffffffffffffff); /* marker */
 	push_be_uint(session, 8, 0xffffffffffffffff); /* marker */
 
-	push_be_uint(session, 2, 0); /* length */
+	push_be_uint(session, 2, 0); /* length, will be overwritten later */
 	push_be_uint(session, 1, BGP_MSG_UPDATE); /* message type */
 
-	push_be_uint(session, 2, 0); /* withdrawn routes length  */
-	push_be_uint(session, 2, bgp_path->path_length); /* total path attributes length */
+	if (!session->ribwalk_withdraw) {
 
-	/* path attributes */
-	memcpy(session->write_buf+session->write_idx,
-	       session->ribwalk_pnode->key,
-	       bgp_path->path_length);
-	session->write_idx += bgp_path->path_length;
+	    /*
+	     * Encode update.
+	     */
+	    push_be_uint(session, 2, 0); /* withdrawn routes length  */
+	    push_be_uint(session, 2, bgp_path->path_length); /* total path attributes length */
 
-	if (log_id[UPDATE].enable) {
-	    int old_show, old_detail;
+	    /* path attributes */
+	    memcpy(session->write_buf+session->write_idx,
+		   session->ribwalk_pnode->key,
+		   bgp_path->path_length);
+	    session->write_idx += bgp_path->path_length;
 
-	    memset(&route, 0, sizeof(route));
-	    LOG(UPDATE, "Encode path_id %u, length %u, refcount %u\n",
-		bgp_path->path_id, bgp_path->path_length, bgp_path->refcount);
+	    if (log_id[UPDATE].enable) {
+		int old_show, old_detail;
 
-	    old_show = show;
-	    old_detail = detail;
-	    show = 1;
-	    detail = 1;
-	    bgpdump_process_bgp_attributes(&route, session->ribwalk_pnode->key,
-				       session->ribwalk_pnode->key + bgp_path->path_length);
-	    show = old_show;
-	    detail = old_detail;
+		memset(&route, 0, sizeof(route));
+		LOG(UPDATE, "Encode path_id %u, length %u, refcount %u\n",
+		    bgp_path->path_id, bgp_path->path_length, bgp_path->refcount);
+
+		old_show = show;
+		old_detail = detail;
+		show = 1;
+		detail = 1;
+		bgpdump_process_bgp_attributes(&route, session->ribwalk_pnode->key,
+					       session->ribwalk_pnode->key + bgp_path->path_length);
+		show = old_show;
+		detail = old_detail;
+	    }
+	} else {
+
+	    /*
+	     * Encode withdraw.
+	     */
+	    push_be_uint(session, 2, 0); /* withdrawn routes length. Will be overwritten later */
 	}
 
 	/* prefixes */
@@ -504,6 +552,12 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	}
 	session->ribwalk_prefix_index = prefix_index; /* Update cursor */
 
+	if (session->ribwalk_withdraw)  {
+	    length = session->write_idx - (update_start_idx+16+3+2);
+	    write_be_uint(session->write_buf+update_start_idx+19, 2, length); /* overwrite withdrawn routes length */
+	    push_be_uint(session, 2, 0); /* total path attributes length */
+	}
+
 	/*
 	 * Calculate Message length field.
 	 */
@@ -515,9 +569,10 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
     }
 
     if (updates_encoded) {
-	LOG(NORMAL, "Sent %u updates, %u prefixes, %u octets\n",
+	LOG(NORMAL, "Sent %u updates, %u prefixes sent, %u prefixes withdrawn, %u octets\n",
 	    session->stats.updates_sent,
 	    session->stats.prefixes_sent,
+	    session->stats.prefixes_withdrawn,
 	    session->stats.octets_sent);
     }
 
@@ -857,6 +912,35 @@ timer_compare (struct timespec *ts1, struct timespec *ts2)
     }
 
     return 0;
+}
+
+/*
+ * Subtract the timestamps x from y, storing the result in result.
+ */
+void
+timespec_sub (struct timespec *result, struct timespec *x, struct timespec *y)
+{
+    if (x->tv_sec < y->tv_sec) {
+        result->tv_sec = 0;
+        result->tv_nsec = 0;
+        return;
+    }
+
+    /*
+     * Avoid overflow of result->tv_nsec
+     */
+    if (x->tv_nsec < y->tv_nsec) {
+        if (x->tv_sec == y->tv_sec) {
+            result->tv_sec = 0;
+            result->tv_nsec = 0;
+            return;
+        }
+        result->tv_nsec = x->tv_nsec + 1e9 - y->tv_nsec;
+        result->tv_sec = x->tv_sec - y->tv_sec - 1;
+    } else {
+        result->tv_sec = x->tv_sec - y->tv_sec;
+        result->tv_nsec = x->tv_nsec - y->tv_nsec;
+    }
 }
 
 /*
