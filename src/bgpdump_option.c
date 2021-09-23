@@ -39,7 +39,7 @@ extern int optopt;
 extern int opterr;
 extern int optreset;
 
-const char *optstring = "hVvdmbPp:a:uUrcjJ:kN:M:gl:L:46H:qf:G:B:S:t:DT:";
+const char *optstring = "hVvdmbPp:a:uUrcjJ:kN:M:gl:L:46H:qf:G:B:S:t:DT:w:";
 const struct option longopts[] =
 {
   { "help",         no_argument,       NULL, 'h' },
@@ -71,6 +71,7 @@ const struct option longopts[] =
   { "heatmap",      required_argument, NULL, 'H' },
   { "log",          required_argument, NULL, 't' },
   { "prefix-limit", required_argument, NULL, 'T' },
+  { "withdraw-delay", required_argument, NULL, 'w' },
   { NULL,           0,                 NULL, 0   }
 };
 
@@ -87,6 +88,7 @@ const char opthelp[] = "\
 -S, --next-hop-self <addr> Overwrite nexthop attribute.\n\
 -a, --autnum <asn>        Blaster Mode. Specify ASN.\n\
                           At most %d ASNs can be specified.\n\
+-w, --withdraw-delay      Blaster Mode. Send withdraw after <N> seconds.\n\
 -P, --peer-table          Display the peer table and exit.\n\
 -p, --peer <peer_index>   Specify peers by peer_index.\n\
                           At most %d peers can be specified.\n\
@@ -141,6 +143,7 @@ int prefix_limit = 0;
 int nhs = 0;
 struct sockaddr_in nhs_addr4;
 struct sockaddr_in6 nhs_addr6;
+int withdraw_delay = 0;
 
 extern char *progname;
 extern int safi;
@@ -296,6 +299,9 @@ bgpdump_getopt (int argc, char **argv)
 	      nhs = AF_INET6;
 	  }
           break;
+        case 'w':
+          withdraw_delay = strtoul(optarg, &endptr, 0);
+	  break;
         case 't':
 	    log_enable(optarg);
 	  break;
