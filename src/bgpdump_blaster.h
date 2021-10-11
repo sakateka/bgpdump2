@@ -33,7 +33,7 @@ typedef enum
     ESTABLISHED
 } state_t;
 
-struct __attribute__((__packed__)) timer_
+struct timer_
 {
     CIRCLEQ_ENTRY(timer_) timer_qnode;
     char name[16];
@@ -45,7 +45,7 @@ struct __attribute__((__packed__)) timer_
 	expired:1;
 };
 
-struct __attribute__((__packed__)) bgp_session_
+struct bgp_session_
 {
     FILE *file;
     int sockfd;
