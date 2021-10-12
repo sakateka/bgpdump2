@@ -9,7 +9,10 @@
 #ifndef __BGPDUMP_BLASTER_H__
 #define __BGPDUMP_BLASTER_H__
 
+#include <netinet/in.h>
+
 void bgpdump_blaster(void);
+char *fmt_timestamp(void);
 
 #define BGP_TCP_PORT 179
 #define BGP_READBUFSIZE  65536
@@ -32,18 +35,6 @@ typedef enum
     OPENCONFIRM,
     ESTABLISHED
 } state_t;
-
-struct timer_
-{
-    CIRCLEQ_ENTRY(timer_) timer_qnode;
-    char name[16];
-    void *data; /* Misc. data */
-    struct timer_ **ptimer;
-    void (*cb)(struct timer_ *); /* Callback function. */
-    struct timespec expire; /* Expiration interval */
-    uint delete:1,
-	expired:1;
-};
 
 struct bgp_session_
 {
