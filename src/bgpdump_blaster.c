@@ -291,14 +291,7 @@ bgpdump_drain_cb (struct timer_ *timer)
 
     session = (struct bgp_session_ *)timer->data;
 
-    if (bgpdump_fflush(session)) {
-
-	/*
-	 * Re-schedule.
-	 */
-	timer_add(&timer_root, &session->write_job, "write_job",
-		  0, 20 * MSEC, session, bgpdump_drain_cb);
-    }
+    bgpdump_fflush(session);
 }
 
 void
@@ -854,14 +847,6 @@ bgpdump_send_keepalive_cb (struct timer_ *timer)
 
     push_keepalive_message(session);
     bgpdump_fflush(session);
-
-    /*
-     * Reschedule the keepalive timer.
-     */
-    if (session->state == ESTABLISHED) {
-	timer_add(&timer_root, &session->keepalive_timer, "keepalive",
-		  30, 0, session, bgpdump_send_keepalive_cb);
-    }
 }
 
 
@@ -1056,8 +1041,8 @@ bgpdump_read (struct bgp_session_ *session)
 	    session->peer_as = read_be_uint(session->read_buf_start+20, 2);
 	    session->peer_holdtime = read_be_uint(session->read_buf_start+22, 2);
 	    LOG(NORMAL, "  Peer AS %u, holdtime %us\n", session->peer_as, session->peer_holdtime);
-	    timer_add(&timer_root, &session->keepalive_timer, "keepalive",
-		      30, 0, session, bgpdump_send_keepalive_cb);
+	    timer_add_periodic(&timer_root, &session->keepalive_timer, "keepalive",
+			       30, 0, session, bgpdump_send_keepalive_cb);
 	    break;
 
 	case BGP_MSG_NOTIFICATION:
@@ -1112,8 +1097,8 @@ bgpdump_read (struct bgp_session_ *session)
 	    /*
 	     * Start the walk job.
 	     */
-	    timer_add(&timer_root, &session->write_job, "write_job",
-		      1, 0, session, bgpdump_ribwalk_cb);
+	    timer_add_periodic(&timer_root, &session->write_job, "write_job",
+			       1, 0, session, bgpdump_ribwalk_cb);
 	    break;
 
 	case BGP_MSG_UPDATE:
@@ -1254,7 +1239,7 @@ bgpdump_blaster (void)
 	 * In case of blaster_dump option we'll just dump the BGP stream into a file.
 	 */
 	timer_add(&timer_root, &session->write_job, "write_job",
-		  0, 0, session, bgpdump_ribwalk_cb);
+		  0, 20 * MSEC, session, bgpdump_ribwalk_cb);
 
     } else {
 
