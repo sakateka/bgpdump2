@@ -427,10 +427,11 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		 * withdraw sending of this RIB is complete.
 		 */
 		if (!withdraw_delay || (withdraw_delay && session->ribwalk_withdraw)) {
-		    if (session->ribwalk_peer_index < peer_spec_size) {
+		    if (session->ribwalk_peer_index < peer_spec_size-1) {
 			session->ribwalk_peer_index++;
 		    } else {
 			session->ribwalk_complete = true;
+			LOG(NORMAL, "RIB walk complete\n");
 		    }
 		}
 

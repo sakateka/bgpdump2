@@ -217,19 +217,19 @@ bgpdump_table_v2_peer_entry (int index, char *p, char *data_end, int *retsize)
 
   if (autsiz)
     {
-      int i;
+      int i, local_peer_spec_size = peer_spec_size;
       for (i = 0; i < autsiz; i++)
         {
           if (peer_table[index].asnumber == autnums[i] &&
-              peer_spec_size < PEER_INDEX_MAX)
+              local_peer_spec_size < PEER_INDEX_MAX)
             {
               printf ("peer_spec_index[%d]: register peer %d, asn %d\n",
-                       peer_spec_size, index, peer_table[index].asnumber);
-              peer_spec_index[peer_spec_size] = index;
-              peer_route_table[peer_spec_size] = route_table_create ();
-              peer_route_size[peer_spec_size] = 0;
-              peer_ptree[peer_spec_size] = ptree_create ();
-              peer_spec_size++;
+                       local_peer_spec_size, index, peer_table[index].asnumber);
+              peer_spec_index[local_peer_spec_size] = index;
+              peer_route_table[local_peer_spec_size] = route_table_create ();
+              peer_route_size[local_peer_spec_size] = 0;
+              peer_ptree[local_peer_spec_size] = ptree_create ();
+              local_peer_spec_size++;
             }
         }
     }
