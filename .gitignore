@@ -33,3 +33,5 @@ data
 *bview
 *~
 TAGS
+
+!.jenkins/jenkins_build_conf.json
