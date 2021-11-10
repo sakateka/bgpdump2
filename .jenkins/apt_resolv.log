@@ -1,0 +1,5 @@
+libarchive-dev
+libbz2-dev
+liblz-dev
+zlib1g-dev
+libzstd-dev
