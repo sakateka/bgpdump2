@@ -40,6 +40,10 @@
 extern struct bgp_route *diff_table[];
 extern struct ptree *diff_ptree[];
 
+#ifndef MAX
+#define MAX(a,b) (a > b ? a : b)
+#endif
+
 #define BUFFER_OVERRUN_CHECK(P,SIZE,END) \
   if ((P) + (SIZE) > (END))              \
     {                                    \
@@ -902,11 +906,15 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
        */
       if (blaster || blaster_dump) {
 
+	uint32_t count;
+
 	/* next hop rewrite ? */
 	if (nhs) {
 	  bgpdump_rewrite_nh(p, attribute_length);
 	}
-	if (prefix_limit && peer_table[peer_index].ipv4_count < prefix_limit) {
+
+	count = MAX(peer_table[peer_index].ipv4_count, peer_table[peer_index].ipv6_count);
+	if (prefix_limit && count < prefix_limit) {
 	  bgpdump_add_prefix(&route, peer_index, p, attribute_length);
 	} else if (!prefix_limit) {
 	  bgpdump_add_prefix(&route, peer_index, p, attribute_length);
