@@ -727,11 +727,11 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
 }
 
 void
-bgpdump_rewrite_nh (char *raw_path, uint16_t path_length)
+bgpdump_rewrite_nh (uint8_t *raw_path, uint16_t path_length)
 {
   uint8_t pa_flags, pa_type;
   uint16_t pa_length;
-  char *pa;
+  uint8_t *pa;
 
   pa = raw_path;
   while (pa < (raw_path + path_length)) {
@@ -910,7 +910,7 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
 
 	/* next hop rewrite ? */
 	if (nhs) {
-	  bgpdump_rewrite_nh(p, attribute_length);
+	  bgpdump_rewrite_nh((uint8_t *)p, attribute_length);
 	}
 
 	count = MAX(peer_table[peer_index].ipv4_count, peer_table[peer_index].ipv6_count);
