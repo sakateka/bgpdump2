@@ -432,6 +432,7 @@ timer_add_periodic (timer_root_s *root, timer_s **ptimer, char *name,
     timer = *ptimer;
     if (timer) {
         timer->periodic = true;
+	LOG(TIMER, "Set %s timer flag periodic\n", timer->name);
     }
 }
 

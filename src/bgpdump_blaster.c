@@ -280,7 +280,7 @@ bgpdump_push_prefix(struct bgp_session_ *session, struct bgp_prefix_ *prefix)
 }
 
 /*
- * Drain the write buffer. Re-schedule until the buffer is empty.
+ * Drain the write buffer. Kill once the buffer is empty
  */
 void
 bgpdump_drain_cb (struct timer_ *timer)
@@ -289,7 +289,51 @@ bgpdump_drain_cb (struct timer_ *timer)
 
     session = (struct bgp_session_ *)timer->data;
 
-    bgpdump_fflush(session);
+    if (!bgpdump_fflush(session)) {
+	timer_del(session->write_job);
+    }
+}
+
+void
+bgpdump_send_eor (struct bgp_session_ *session, uint16_t af, uint8_t safi)
+{
+    uint16_t afi;
+
+    if (af == AF_INET && safi == 1) {
+
+	/* ipv4-unicast */
+	push_be_uint(session, 8, 0xffffffffffffffff); /* marker */
+	push_be_uint(session, 8, 0xffffffffffffffff); /* marker */
+	push_be_uint(session, 2, 23); /* length */
+	push_be_uint(session, 1, BGP_MSG_UPDATE); /* message type */
+	push_be_uint(session, 2, 0); /* withdrawn routes length  */
+	push_be_uint(session, 2, 0); /* total path attributes length */
+
+    } else {
+
+	/* all-other afi/safi pairs */
+	afi = 0;
+	if (af == AF_INET6) {
+	    afi = 2;
+	}
+
+	push_be_uint(session, 8, 0xffffffffffffffff); /* marker */
+	push_be_uint(session, 8, 0xffffffffffffffff); /* marker */
+	push_be_uint(session, 2, 31); /* length */
+	push_be_uint(session, 1, BGP_MSG_UPDATE); /* message type */
+	push_be_uint(session, 2, 0); /* withdrawn routes length  */
+	push_be_uint(session, 2, 8); /* total path attributes length */
+
+	push_be_uint(session, 1, 0x80); /* pa_flags */
+	push_be_uint(session, 1, 14); /* MP_REACH_NLRI */
+	push_be_uint(session, 1, 5); /* pa_length */
+	push_be_uint(session, 2, afi); /* AFI */
+	push_be_uint(session, 1, safi); /* SAFI */
+	push_be_uint(session, 1, 0); /* NH length */
+	push_be_uint(session, 1, 0); /* reserved */
+
+    }
+    session->stats.updates_sent++;
 }
 
 void
@@ -341,9 +385,6 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    session->ribwalk_pnode = NULL;
 	    session->ribwalk_prefix_index = 0;
 
-	    /* re-schedule */
-	    timer_add(&timer_root, &session->write_job, "write_job",
-		      0, 20 * MSEC, session, bgpdump_ribwalk_cb);
 	    return;
 	}
 
@@ -436,13 +477,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		/*
 		 * We're done. Send End of RIB marker which is an empty BGP update.
 		 */
-		push_be_uint(session, 8, 0xffffffffffffffff); /* marker */
-		push_be_uint(session, 8, 0xffffffffffffffff); /* marker */
-		push_be_uint(session, 2, 23); /* length */
-		push_be_uint(session, 1, BGP_MSG_UPDATE); /* message type */
-		push_be_uint(session, 2, 0); /* withdrawn routes length  */
-		push_be_uint(session, 2, 0); /* total path attributes length */
-		session->stats.updates_sent++;
+		bgpdump_send_eor(session, bgp_path->af, 1);
 
 		bgpdump_fflush(session);
 		LOG(NORMAL, "Sent %u updates, %u prefixes sent, %u prefixes withdrawn, %u octets\n",
@@ -626,12 +661,6 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
      * Start the write loop.
      */
     bgpdump_fflush(session);
-
-    /*
-     * Re-schedule.
-     */
-    timer_add(&timer_root, &session->write_job, "write_job",
-	      0, 20 * MSEC, session, bgpdump_ribwalk_cb);
 }
 
 /*
@@ -1148,7 +1177,7 @@ bgpdump_read (struct bgp_session_ *session)
 	     * Start the walk job.
 	     */
 	    timer_add_periodic(&timer_root, &session->write_job, "write_job",
-			       1, 0, session, bgpdump_ribwalk_cb);
+			       0, 20 * MSEC, session, bgpdump_ribwalk_cb);
 	    break;
 
 	case BGP_MSG_UPDATE:
@@ -1288,8 +1317,8 @@ bgpdump_blaster (void)
 	/*
 	 * In case of blaster_dump option we'll just dump the BGP stream into a file.
 	 */
-	timer_add(&timer_root, &session->write_job, "write_job",
-		  0, 20 * MSEC, session, bgpdump_ribwalk_cb);
+	timer_add_periodic(&timer_root, &session->write_job, "write_job",
+			   0, 20 * MSEC, session, bgpdump_ribwalk_cb);
 
     } else {
 
