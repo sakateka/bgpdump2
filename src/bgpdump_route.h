@@ -69,8 +69,9 @@ struct __attribute__((__packed__)) bgp_route
 struct __attribute__((__packed__)) bgp_path_
 {
   struct ptree_node *pnode;
+  uint8_t nexthop[16]; /* for AF_INET6 only */
   uint32_t refcount;
-  uint32_t path_id;
+  uint16_t af;
   uint16_t path_length;
   /* List of all prefixes per path */
   CIRCLEQ_HEAD(bgp_path_head_, bgp_prefix_ ) path_qhead;

@@ -16,6 +16,7 @@
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -60,7 +61,6 @@ uint32_t sequence_number;
 uint16_t peer_index;
 char prefix[16];
 uint8_t prefix_length;
-uint32_t path_id = 0;
 
 void
 bgpdump_process_mrt_header (struct mrt_header *h, struct mrt_info *info)
@@ -752,7 +752,7 @@ bgpdump_rewrite_nh (uint8_t *raw_path, uint16_t path_length)
 	memcpy(pa, &nhs_addr4.sin_addr, 4);
       }
       return;
-    case MP_REACH_NLRI:
+    case MP_REACH_NLRI: /* ipv6 next hop */
       {
 	uint16_t afi;
 	uint8_t safi, nh_len;
@@ -774,21 +774,204 @@ bgpdump_rewrite_nh (uint8_t *raw_path, uint16_t path_length)
   }
 }
 
+/*
+ * Data structure used for parsing BGP path attributes.
+ * For each attribute the location is set using the pa_start array.
+ * For quick access the respective bit in the bitmap is set.
+ */
+struct bgpdump_pa_map_ {
+  uint8_t pa_bitmap[32]; /* one bit for each PA found */
+  uint8_t *pa_start[256]; /* start for each PA */
+  uint16_t pa_length[256]; /* length for each PA */
+};
+
+/*
+ * Mark a given PA type as found.
+ */
+void
+bgpdump_set_pa_bit (struct bgpdump_pa_map_ *pa_map, uint8_t pa_type)
+{
+    uint offset;
+
+    offset = pa_type >> 3;
+    pa_map->pa_bitmap[offset] |= (1L << (pa_type & 0x7));
+}
+
+/*
+ * Mark a given PA type as processed.
+ */
+void
+bgpdump_reset_pa_bit (struct bgpdump_pa_map_ *pa_map, uint8_t pa_type)
+{
+    uint offset;
+
+    offset = pa_type >> 3;
+    pa_map->pa_bitmap[offset] ^= (1L << (pa_type & 0x7));
+}
+
+/*
+ * Check if a given PA type was found.
+ */
+bool
+bgpdump_get_pa_bit (struct bgpdump_pa_map_ *pa_map, uint8_t pa_type)
+{
+    uint offset;
+
+    offset = pa_type >> 3;
+    return (pa_map->pa_bitmap[offset] & (1L << (pa_type & 0x7)));
+}
+
+/*
+ * Index the PA block, such that we can have a quick handle for accessing individual PAs.
+ */
+void
+bgpdump_index_bgp_pa (struct bgpdump_pa_map_ *pa_map, uint8_t *buffer, uint16_t buffer_len)
+{
+    uint8_t pa_flags, pa_type;
+    uint16_t pa_length;
+
+    /*
+     * Quick way of resetting the PA map index.
+     */
+    memset(&pa_map->pa_bitmap, 0, sizeof(pa_map->pa_bitmap));
+
+    while (buffer_len > 3) {
+	pa_flags = *buffer;
+	pa_type = *(buffer+1);
+
+	/* record beginning of PA */
+	pa_map->pa_start[pa_type] = buffer;
+
+	buffer += 2;
+	buffer_len -= 2;
+	pa_map->pa_length[pa_type] = 2;
+
+	if (pa_flags & 0x10) { 	/* Extended length ? */
+	    pa_length = *buffer << 8 | *(buffer+1);
+	    buffer+=2;
+	    pa_map->pa_length[pa_type] += 2;
+	    buffer_len-=2;
+	} else {
+	    pa_length = *buffer;
+	    buffer++;
+	    pa_map->pa_length[pa_type] += 1;
+	    buffer_len--;
+	}
+
+	/* Check if pa_length overruns buffer */
+	if (pa_length > buffer_len) {
+	    return;
+	}
+
+	/* Check if pa_length is_zero */
+	if (!pa_length) {
+	    return;
+	}
+
+	/*
+	 * Update the index map, where we have found a particular PA.
+	 */
+	pa_map->pa_length[pa_type] += pa_length;
+	bgpdump_set_pa_bit(pa_map, pa_type);
+
+	buffer+= pa_length;
+	buffer_len -= pa_length;
+    }
+}
+
+void
+bgpdump_copy_pa (struct bgpdump_pa_map_ *pa_map, uint8_t pa_type, uint8_t **fpap)
+{
+  if (!bgpdump_get_pa_bit(pa_map, pa_type)) {
+    return;
+  }
+
+  memcpy(*fpap, pa_map->pa_start[pa_type], pa_map->pa_length[pa_type]);
+  *fpap += pa_map->pa_length[pa_type];
+
+  bgpdump_reset_pa_bit(pa_map, pa_type);
+}
+
+uint16_t
+bgpdump_filter_bgp_pa (struct bgpdump_pa_map_ *pa_map, uint8_t *filtered_path)
+{
+  uint8_t *fp;
+
+  fp = filtered_path;
+
+  /* Copy the known PAs */
+  bgpdump_copy_pa(pa_map, ORIGIN, &fp);
+  bgpdump_copy_pa(pa_map, NEXT_HOP, &fp);
+  bgpdump_copy_pa(pa_map, AS_PATH, &fp);
+  bgpdump_copy_pa(pa_map, MULTI_EXIT_DISC, &fp);
+  bgpdump_copy_pa(pa_map, ATOMIC_AGGREGATE, &fp);
+  bgpdump_copy_pa(pa_map, AGGREGATOR, &fp);
+  bgpdump_copy_pa(pa_map, COMMUNITY, &fp);
+  bgpdump_copy_pa(pa_map, EXTENDED_COMMUNITY, &fp);
+  bgpdump_copy_pa(pa_map, LARGE_COMMUNITY, &fp);
+
+  return fp - filtered_path;
+}
+
+void
+bgpdump_copy_nh_mpreach_pa (struct bgpdump_pa_map_ *pa_map, struct bgp_path_ *bgp_path)
+{
+  uint16_t afi;
+  uint8_t safi, pa_flags, nh_len;
+  uint8_t *buffer;
+
+  if (!bgpdump_get_pa_bit(pa_map, MP_REACH_NLRI)) {
+    return;
+  }
+
+  buffer = pa_map->pa_start[MP_REACH_NLRI];
+
+  pa_flags = *buffer;
+  if (pa_flags & 0x10) { /* extended length ? */
+    buffer += 4;
+  } else {
+    buffer += 3;
+  }
+
+  afi = *buffer << 8 | *(buffer+1);
+  safi = *(buffer+2);
+  nh_len = *(buffer+3);
+
+  if (nh_len != 16 || afi != 2 || safi != 1) {
+    return;
+  }
+
+  /* copy nexthop */
+  memcpy(bgp_path->nexthop, buffer+4, 16);
+}
+
 void
 bgpdump_add_prefix (struct bgp_route *route, int index, char *raw_path, uint16_t path_length)
 {
   struct bgp_path_ *bgp_path;
   struct ptree_node *bgp_path_node;
   struct bgp_prefix_ *bgp_prefix;
+  struct bgpdump_pa_map_ pa_map;
+  uint16_t filtered_path_length;
+  uint8_t filtered_path[4096];
+
+  /*
+   * First index the path attributes. We may need to filter the ipv6 prefix list in MP_REACH_NLRI PA.
+   */
+  bgpdump_index_bgp_pa(&pa_map, (uint8_t *)raw_path, path_length);
+  filtered_path_length = bgpdump_filter_bgp_pa(&pa_map, filtered_path);
+  if (!filtered_path_length) {
+    return;
+  }
 
   /*
    * Check first if the path-attributes are known.
    */
-  bgp_path_node = ptree_search(raw_path, path_length * 8, peer_table[index].path_root);
+  bgp_path_node = ptree_search((char *)filtered_path, filtered_path_length * 8, peer_table[index].path_root);
 
   if (!bgp_path_node) {
 
-    if (!path_length) {
+    if (!filtered_path_length) {
       return;
     }
 
@@ -796,14 +979,19 @@ bgpdump_add_prefix (struct bgp_route *route, int index, char *raw_path, uint16_t
     if (!bgp_path) {
       return;
     }
-    bgp_path->pnode = ptree_add(raw_path, path_length * 8, bgp_path, peer_table[index].path_root);
+
+    /*
+     * Add fresh BGP path to the tree.
+     */
+    bgpdump_copy_nh_mpreach_pa(&pa_map, bgp_path);
+    bgp_path->af = qaf;
+    bgp_path->pnode = ptree_add((char *)filtered_path, filtered_path_length * 8, bgp_path,
+				peer_table[index].path_root);
     if (bgp_path->pnode) {
       peer_table[index].path_count++;
     }
-    bgp_path->path_length = path_length;
+    bgp_path->path_length = filtered_path_length;
     CIRCLEQ_INIT(&bgp_path->path_qhead);
-    bgp_path->path_id = path_id;
-    path_id++;
   } else {
     bgp_path = bgp_path_node->data;
   }
@@ -812,15 +1000,14 @@ bgpdump_add_prefix (struct bgp_route *route, int index, char *raw_path, uint16_t
   memcpy(&bgp_prefix->prefix, &route->prefix, (route->prefix_length + 7) / 8);
   bgp_prefix->prefix_length = route->prefix_length;
   bgp_prefix->index = index;
-  bgp_prefix->afi = safi; /* There is confusion about AFI and SAFI in the codebase */
 
-  if (bgp_prefix->afi == AF_INET) {
+  if (bgp_path->af == AF_INET) {
     bgp_prefix->pnode = ptree_add(route->prefix, route->prefix_length,
 				  bgp_prefix, peer_table[index].ipv4_root);
     if (bgp_prefix->pnode) {
       peer_table[index].ipv4_count++;
     }
-  } else if (bgp_prefix->afi == AF_INET6) {
+  } else if (bgp_path->af == AF_INET6) {
     bgp_prefix->pnode = ptree_add(route->prefix, route->prefix_length,
 				  bgp_prefix, peer_table[index].ipv6_root);
     if (bgp_prefix->pnode) {

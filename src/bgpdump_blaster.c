@@ -267,14 +267,12 @@ bgpdump_push_prefix(struct bgp_session_ *session, struct bgp_prefix_ *prefix)
 {
     int idx, length;
 
-    if (prefix->afi == AF_INET) {
-	*(session->write_buf + session->write_idx) = prefix->prefix_length;
+    *(session->write_buf + session->write_idx) = prefix->prefix_length;
+    session->write_idx++;
+    length = (prefix->prefix_length + 7) / 8;
+    for (idx = 0; idx < length; idx++) {
+	*(session->write_buf + session->write_idx) = prefix->prefix[idx];
 	session->write_idx++;
-	length = (prefix->prefix_length + 7) / 8;
-	for (idx = 0; idx < length; idx++) {
-	    *(session->write_buf + session->write_idx) = prefix->prefix[idx];
-	    session->write_idx++;
-	}
     }
 
     if (session->ribwalk_withdraw) {
@@ -312,7 +310,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
     struct bgp_route route;
     struct ptree *t;
     int peer_index, prefix_index;
-    uint update_start_idx, length;
+    uint update_start_idx, tpa_length_idx, length;
     uint updates_encoded;
 
     session = (struct bgp_session_ *)timer->data;
@@ -499,6 +497,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	     * Encode update.
 	     */
 	    push_be_uint(session, 2, 0); /* withdrawn routes length  */
+	    tpa_length_idx = session->write_idx;
 	    push_be_uint(session, 2, bgp_path->path_length); /* total path attributes length */
 
 	    /* path attributes */
@@ -511,8 +510,8 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		int old_show, old_detail;
 
 		memset(&route, 0, sizeof(route));
-		LOG(UPDATE, "Encode path_id %u, length %u, refcount %u\n",
-		    bgp_path->path_id, bgp_path->path_length, bgp_path->refcount);
+		LOG(UPDATE, "Encode path %p, length %u, refcount %u\n",
+		    bgp_path, bgp_path->path_length, bgp_path->refcount);
 
 		old_show = show;
 		old_detail = detail;
@@ -531,24 +530,75 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    push_be_uint(session, 2, 0); /* withdrawn routes length. Will be overwritten later */
 	}
 
-	/* prefixes */
+	/* Encode prefixes */
 	prefix_index = 0;
-	CIRCLEQ_FOREACH(prefix, &bgp_path->path_qhead, prefix_qnode) {
-	    if (session->ribwalk_prefix_index &&
-		(prefix_index < session->ribwalk_prefix_index)) {
-		prefix_index++;
-		continue;
-	    }
-	    bgpdump_push_prefix(session, prefix);
-	    prefix_index++;
 
-	    /*
-	     * If there is not enough space for at least one full prefix then bail.
-	     */
-	    if (session->write_idx - update_start_idx >= (BGP_MAX_MESSAGE_SIZE - 5)) {
-		LOG(IO, "Update full, encoded %u prefixes\n", prefix_index);
-		break;
+	if (bgp_path->af == AF_INET) {
+
+	    /* ipv4 */
+	    CIRCLEQ_FOREACH(prefix, &bgp_path->path_qhead, prefix_qnode) {
+		if (session->ribwalk_prefix_index &&
+		    (prefix_index < session->ribwalk_prefix_index)) {
+		    prefix_index++;
+		    continue;
+		}
+		bgpdump_push_prefix(session, prefix);
+		prefix_index++;
+
+		/*
+		 * If there is not enough space for at least one full ipv4 prefix then bail.
+		 */
+		if (session->write_idx - update_start_idx >= (BGP_MAX_MESSAGE_SIZE - 5)) {
+		    LOG(IO, "Update full, encoded %u ipv4 prefixes\n", prefix_index);
+		    break;
+		}
 	    }
+	} else if (bgp_path->af == AF_INET6) {
+
+	    /* ipv6 */
+
+	    uint pa_start_idx;
+
+	    /* first write a MP_REACH attribute header */
+
+	    push_be_uint(session, 1, 0x90); /* pa_flags: extended length */
+	    push_be_uint(session, 1, 14); /* MP_REACH_NLRI */
+	    push_be_uint(session, 2, 0); /* length, will be overwritten later */
+	    pa_start_idx = session->write_idx;
+	    push_be_uint(session, 2, 2); /* AFI ipv6 */
+	    push_be_uint(session, 1, 1); /* SAFI unicast */
+
+	    /* nexthop */
+	    push_be_uint(session, 1, 16); /* nexthop length */
+	    memcpy(session->write_buf+session->write_idx, bgp_path->nexthop, 16);
+	    session->write_idx += 16;
+
+	    push_be_uint(session, 1, 0); /* SNPA / reserved */
+
+	    CIRCLEQ_FOREACH(prefix, &bgp_path->path_qhead, prefix_qnode) {
+		if (session->ribwalk_prefix_index &&
+		    (prefix_index < session->ribwalk_prefix_index)) {
+		    prefix_index++;
+		    continue;
+		}
+		bgpdump_push_prefix(session, prefix);
+		prefix_index++;
+
+		/*
+		 * If there is not enough space for at least one full ipv6 prefix then bail.
+		 */
+		if (session->write_idx - update_start_idx >= (BGP_MAX_MESSAGE_SIZE - 17)) {
+		    LOG(IO, "Update full, encoded %u ipv6 prefixes\n", prefix_index);
+		    break;
+		}
+	    }
+
+	    /* overwrite pa length */
+	    length = session->write_idx - pa_start_idx;
+	    write_be_uint(session->write_buf+pa_start_idx-2, 2, length);
+
+	    /* overwrite total pa length */
+	    write_be_uint(session->write_buf+tpa_length_idx, 2, bgp_path->path_length + length + 4);
 	}
 	session->ribwalk_prefix_index = prefix_index; /* Update cursor */
 
