@@ -863,11 +863,6 @@ bgpdump_index_bgp_pa (struct bgpdump_pa_map_ *pa_map, uint8_t *buffer, uint16_t 
 	    return;
 	}
 
-	/* Check if pa_length is_zero */
-	if (!pa_length) {
-	    return;
-	}
-
 	/*
 	 * Update the index map, where we have found a particular PA.
 	 */
