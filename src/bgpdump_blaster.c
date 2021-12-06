@@ -20,13 +20,13 @@
 #include <sys/uio.h>
 #include <sys/queue.h>
 #include <time.h>
-
 #include <sys/stat.h>
 #include <fcntl.h>
 
 #include "netdb.h"
 
 #include "ptree.h"
+#include "timer.h"
 #include "bgpdump_option.h"
 #include "bgpdump_route.h"
 #include "bgpdump_data.h"
@@ -34,8 +34,7 @@
 #include "bgpdump_blaster.h"
 
 /* Globals */
-
-CIRCLEQ_HEAD(timer_head_, timer_ ) timer_qhead; /* Timer root */
+struct timer_root_ timer_root; /* Timer root */
 struct log_id_ log_id[LOG_ID_MAX];
 
 struct keyval_ log_names[] = {
@@ -128,8 +127,6 @@ void bgpdump_ribwalk_cb(struct timer_ *);
 void bgpdump_rebase_read_buffer(struct bgp_session_ *);
 void push_be_uint(struct bgp_session_ *, uint, unsigned long long);
 void write_be_uint(u_char *, uint, unsigned long long);
-void timer_add(struct timer_ **, char *, time_t, long, void *, void (*));
-void timespec_sub(struct timespec *, struct timespec *, struct timespec *);
 
 /*
  * Format the logging timestamp.
@@ -292,13 +289,7 @@ bgpdump_drain_cb (struct timer_ *timer)
 
     session = (struct bgp_session_ *)timer->data;
 
-    if (bgpdump_fflush(session)) {
-
-	/*
-	 * Re-schedule.
-	 */
-	timer_add(&session->write_job, "write_job", 0, 20 * MSEC, session, bgpdump_drain_cb);
-    }
+    bgpdump_fflush(session);
 }
 
 void
@@ -328,7 +319,8 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	/* backoff if withdraw delay has not yet been reached */
 	if (diff.tv_sec < withdraw_delay) {
 	    LOG(NORMAL, "Delay withdraw generation for %lu secs\n", withdraw_delay - diff.tv_sec);
-	    timer_add(&session->write_job, "write_job", withdraw_delay, 0, session, bgpdump_ribwalk_cb);
+	    timer_add(&timer_root, &session->write_job, "write_job",
+		      withdraw_delay, 0, session, bgpdump_ribwalk_cb);
 	    return;
 	}
     }
@@ -350,7 +342,8 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    session->ribwalk_prefix_index = 0;
 
 	    /* re-schedule */
-	    timer_add(&session->write_job, "write_job", 0, 20 * MSEC, session, bgpdump_ribwalk_cb);
+	    timer_add(&timer_root, &session->write_job, "write_job",
+		      0, 20 * MSEC, session, bgpdump_ribwalk_cb);
 	    return;
 	}
 
@@ -425,10 +418,11 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		 * withdraw sending of this RIB is complete.
 		 */
 		if (!withdraw_delay || (withdraw_delay && session->ribwalk_withdraw)) {
-		    if (session->ribwalk_peer_index < peer_spec_size) {
+		    if (session->ribwalk_peer_index < peer_spec_size-1) {
 			session->ribwalk_peer_index++;
 		    } else {
 			session->ribwalk_complete = true;
+			LOG(NORMAL, "RIB walk complete\n");
 		    }
 		}
 
@@ -464,9 +458,11 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		 * Re-schedule.
 		 */
 		if (session->ribwalk_complete) {
-		    timer_add(&session->write_job, "write_job", 0, 20 * MSEC, session, bgpdump_drain_cb);
+		    timer_add(&timer_root, &session->write_job, "write_job",
+			      0, 20 * MSEC, session, bgpdump_drain_cb);
 		} else {
-		    timer_add(&session->write_job, "write_job", 0, 20 * MSEC, session, bgpdump_ribwalk_cb);
+		    timer_add(&timer_root, &session->write_job, "write_job",
+			      0, 20 * MSEC, session, bgpdump_ribwalk_cb);
 		}
 		return;
 	    }
@@ -634,7 +630,8 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
     /*
      * Re-schedule.
      */
-    timer_add(&session->write_job, "write_job", 0, 20 * MSEC, session, bgpdump_ribwalk_cb);
+    timer_add(&timer_root, &session->write_job, "write_job",
+	      0, 20 * MSEC, session, bgpdump_ribwalk_cb);
 }
 
 /*
@@ -850,271 +847,6 @@ push_open_message (struct bgp_session_ *session)
     write_be_uint(session->write_buf+open_start_idx+16, 2, length); /* overwrite message length */
 }
 
-/*
- * We do not delete timers, but rather mark them deleted.
- * timer_walk() handles the garbage collection.
- */
-void
-timer_del (struct timer_ **pptr)
-{
-    struct timer_ *timer;
-
-    timer = *pptr;
-    if (!timer) {
-	return;
-    }
-
-    LOG(TIMER, "Delete %s timer\n", timer->name);
-
-    timer->delete = true;
-
-    *pptr = NULL;
-}
-
-
-/*
- * Set timer expiration.
- */
-void
-timer_set_expire (struct timer_ *timer, time_t sec, long nsec)
-{
-    clock_gettime(CLOCK_MONOTONIC, &timer->expire);
-    timer->expire.tv_sec += sec;
-    timer->expire.tv_nsec += nsec;
-
-    /*
-     * Handle nsec overflow.
-     */
-    if (timer->expire.tv_nsec >= 1000000000) {
-	timer->expire.tv_nsec -= 1000000000;
-	timer->expire.tv_sec++;
-    }
-    timer->expired = false;
-}
-
-/*
- * Enqueue a callback function onto the timer list.
- */
-void
-timer_add (struct timer_ **ptimer, char *name, time_t sec, long nsec, void *data, void (*cb))
-{
-    struct timer_ *timer;
-
-
-    timer = *ptimer;
-
-    /*
-     * This timer already exists. reset and exit.
-     */
-    if (timer) {
-	timer->cb = cb;
-	timer->data = data;
-	timer_set_expire(timer, sec, nsec);
-	LOG(TIMER, "Reset %s timer, expire in %lu.%06lus\n", timer->name, sec, nsec/1000);
-	return;
-    }
-
-    timer = calloc(1, sizeof(struct timer_));
-    if (!timer) {
-	return;
-    }
-
-    /*
-     * Store name, data and callback.
-     */
-    snprintf(timer->name, sizeof(timer->name), "%s", name);
-    timer->data = data;
-    timer->cb = cb;
-
-    timer_set_expire(timer, sec, nsec);
-
-    CIRCLEQ_INSERT_TAIL(&timer_qhead, timer, timer_qnode);
-    LOG(TIMER, "Add %s timer, expire in %lu.%06lus\n", timer->name, sec, nsec/1000);
-
-    timer->ptimer = ptimer;
-    *ptimer = timer;
-}
-
-/*
- * Compare two timespecs.
- *
- * return -1 if ts1 is older than ts2
- * return +1 if ts1 is newer than ts2
- * return  0 if ts1 is equal to ts2
- */
-int
-timer_compare (struct timespec *ts1, struct timespec *ts2)
-{
-    if (ts1->tv_sec < ts2->tv_sec) {
-	return -1;
-    }
-
-    if (ts1->tv_sec > ts2->tv_sec) {
-	return +1;
-    }
-
-    if (ts1->tv_nsec < ts2->tv_nsec) {
-	return -1;
-    }
-
-    if (ts1->tv_nsec > ts2->tv_nsec) {
-	return +1;
-    }
-
-    return 0;
-}
-
-/*
- * Subtract the timestamps x from y, storing the result in result.
- */
-void
-timespec_sub (struct timespec *result, struct timespec *x, struct timespec *y)
-{
-    if (x->tv_sec < y->tv_sec) {
-        result->tv_sec = 0;
-        result->tv_nsec = 0;
-        return;
-    }
-
-    /*
-     * Avoid overflow of result->tv_nsec
-     */
-    if (x->tv_nsec < y->tv_nsec) {
-        if (x->tv_sec == y->tv_sec) {
-            result->tv_sec = 0;
-            result->tv_nsec = 0;
-            return;
-        }
-        result->tv_nsec = x->tv_nsec + 1e9 - y->tv_nsec;
-        result->tv_sec = x->tv_sec - y->tv_sec - 1;
-    } else {
-        result->tv_sec = x->tv_sec - y->tv_sec;
-        result->tv_nsec = x->tv_nsec - y->tv_nsec;
-    }
-}
-
-/*
- * Process the timer queue.
- */
-void
-timer_walk (void)
-{
-    struct timer_ *timer, *next_timer;
-    struct timespec now, min, sleep, rem;
-    int res;
-
-    while (!CIRCLEQ_EMPTY(&timer_qhead)) {
-
-	/*
-	 * First pass. Call into expired nodes.
-	 * Figure out our min sleep time.
-	 */
-	clock_gettime(CLOCK_MONOTONIC, &now);
-	min.tv_sec = 0;
-	min.tv_nsec = 0;
-
-	CIRCLEQ_FOREACH(timer, &timer_qhead, timer_qnode) {
-
-	    LOG(TIMER_DETAIL, "Checking %s timer, expire %lu.%lu\n",
-		timer->name, timer->expire.tv_sec, timer->expire.tv_nsec);
-
-	    /*
-	     * Expired ?
-	     */
-	    if ((timer_compare(&timer->expire, &now) == -1) && timer->cb) {
-
-		timer->expired = true;
-
-		/*
-		 * We may destroy our walking point. Prefetch the next node.
-		 */
-		next_timer = CIRCLEQ_NEXT(timer, timer_qnode);
-
-		/*
-		 * Only callback into active timers.
-		 */
-		if (!timer->delete) {
-		    LOG(TIMER, "Firing %s timer\n", timer->name);
-		    (*timer->cb)(timer);
-		}
-
-		if (timer->expired || timer->delete) {
-		    LOG(TIMER, "Free %s timer\n", timer->name);
-
-		    if (timer->ptimer) {
-			*timer->ptimer = NULL;
-		    }
-		    CIRCLEQ_REMOVE(&timer_qhead, timer, timer_qnode);
-		    free(timer);
-		}
-
-		/*
-		 * End of queue ?
-		 */
-		if (next_timer != (struct timer_ *)&timer_qhead) {
-		    timer = next_timer;
-		} else {
-		    break;
-		}
-	    }
-	}
-
-	/*
-	 * Second pass. Figure out min sleep time.
-	 */
-	CIRCLEQ_FOREACH(timer, &timer_qhead, timer_qnode) {
-
-	    /*
-	     * First timer in the queue becomes the actal minimum.
-	     */
-	    if (min.tv_sec == 0 && min.tv_nsec == 0) {
-		min.tv_sec = timer->expire.tv_sec;
-		min.tv_nsec = timer->expire.tv_nsec;
-	    }
-
-	    /*
-	     * Find the min timer.
-	     */
-	    if (timer_compare(&timer->expire, &min) == -1) {
-		LOG(TIMER_DETAIL, "New Minimum sleep (%s) timer, found\n", timer->name);
-		min.tv_sec = timer->expire.tv_sec;
-		min.tv_nsec = timer->expire.tv_nsec;
-	    }
-	}
-
-	/*
-	 * Calculate the sleep timer.
-	 */
-	LOG(TIMER_DETAIL, "Now   %lu.%lu\n", now.tv_sec, now.tv_nsec);
-	LOG(TIMER_DETAIL, "Min   %lu.%lu\n", min.tv_sec, min.tv_nsec);
-
-	clock_gettime(CLOCK_MONOTONIC, &now);
-	if (timer_compare(&now, &min) == -1) {
-	    sleep.tv_sec = min.tv_sec - now.tv_sec;
-	    sleep.tv_nsec = min.tv_nsec - now.tv_nsec;
-
-	    /*
-	     * Handle nsec overflow.
-	     */
-	    if (sleep.tv_nsec < 0) {
-		sleep.tv_nsec += 1000000000;
-		sleep.tv_sec--;
-	    }
-	} else {
-	    sleep.tv_sec = 0;
-	    sleep.tv_nsec = 20 * MSEC;
-	}
-
-	LOG(TIMER_DETAIL, "Sleep %lu.%lu\n", sleep.tv_sec, sleep.tv_nsec);
-	res = nanosleep(&sleep, &rem);
-	if (res == -1) {
-	    LOG(TIMER, "nanosleep(): error %s (%d)\n", strerror(errno), errno);
-	    return;
-	}
-
-    }
-}
-
 void
 bgpdump_close_session_cb (struct timer_ *timer)
 {
@@ -1129,15 +861,15 @@ bgpdump_close_session_cb (struct timer_ *timer)
     /*
      * Kill our timers and jobs.
      */
-    timer_del(&session->connect_timer);
-    timer_del(&session->send_open_timer);
-    timer_del(&session->open_sent_timer);
-    timer_del(&session->keepalive_timer);
-    timer_del(&session->hold_timer);
+    timer_del(session->connect_timer);
+    timer_del(session->send_open_timer);
+    timer_del(session->open_sent_timer);
+    timer_del(session->keepalive_timer);
+    timer_del(session->hold_timer);
 
-    timer_del(&session->read_job);
-    timer_del(&session->write_job);
-    session->close_timer = NULL;
+    timer_del(session->read_job);
+    timer_del(session->write_job);
+    timer_del(session->close_timer);
 
     /*
      * Reset buffers.
@@ -1149,7 +881,8 @@ bgpdump_close_session_cb (struct timer_ *timer)
     /*
      * Try to re-establish in 5s.
      */
-    timer_add(&session->connect_timer, "connect_retry", 5, 0, session, &bgpdump_connect_session_cb);
+    timer_add(&timer_root, &session->connect_timer, "connect_retry",
+	      5, 0, session, &bgpdump_connect_session_cb);
 }
 
 /*
@@ -1164,13 +897,6 @@ bgpdump_send_keepalive_cb (struct timer_ *timer)
 
     push_keepalive_message(session);
     bgpdump_fflush(session);
-
-    /*
-     * Reschedule the keepalive timer.
-     */
-    if (session->state == ESTABLISHED) {
-	timer_add(&session->keepalive_timer, "keepalive", 30, 0, session, bgpdump_send_keepalive_cb);
-    }
 }
 
 
@@ -1191,13 +917,15 @@ bgpdump_send_open_cb (struct timer_ *timer)
      * Kill the session after 10s.
      * Once an open message is received this timer needs to be stopped.
      */
-    timer_add(&session->open_sent_timer, "open_sent", 10, 0, session, &bgpdump_close_session_cb);
+    timer_add(&timer_root, &session->open_sent_timer, "open_sent",
+	      10, 0, session, &bgpdump_close_session_cb);
     bgpdump_fsm_change(session, OPENSENT);
 
     /*
      * Start the read job.
      */
-    timer_add(&session->read_job, "read_job", 0, 0, session, bgpdump_read_cb);
+    timer_add_periodic(&timer_root, &session->read_job, "read_job",
+		       1, 0, session, bgpdump_read_cb);
 }
 
 void
@@ -1306,7 +1034,8 @@ bgpdump_connect_session_cb (struct timer_ *timer)
 		    }
 		    #endif
 
-		    timer_add(&session->send_open_timer, "send_open", 0, 0, session, &bgpdump_send_open_cb);
+		    timer_add(&timer_root, &session->send_open_timer, "send_open",
+			      0, 0, session, &bgpdump_send_open_cb);
 		    break;
 		} else {
 
@@ -1315,7 +1044,8 @@ bgpdump_connect_session_cb (struct timer_ *timer)
 		    session->sockfd = -1;
 
 		    /* did not work, retry in 5s */
-		    timer_add(&session->connect_timer, "connect", 5, 0, session, &bgpdump_connect_session_cb);
+		    timer_add(&timer_root, &session->connect_timer, "connect",
+			      5, 0, session, &bgpdump_connect_session_cb);
 		    return;
 		}
 	    } while (1);
@@ -1352,7 +1082,7 @@ bgpdump_read (struct bgp_session_ *session)
 	switch (type) {
 	case BGP_MSG_OPEN:
 	    /* stop timer */
-	    timer_del(&session->open_sent_timer);
+	    timer_del(session->open_sent_timer);
 	    bgpdump_fsm_change(session, OPENCONFIRM);
 
 	    push_keepalive_message(session);
@@ -1361,8 +1091,8 @@ bgpdump_read (struct bgp_session_ *session)
 	    session->peer_as = read_be_uint(session->read_buf_start+20, 2);
 	    session->peer_holdtime = read_be_uint(session->read_buf_start+22, 2);
 	    LOG(NORMAL, "  Peer AS %u, holdtime %us\n", session->peer_as, session->peer_holdtime);
-
-	    timer_add(&session->keepalive_timer, "keepalive", 30, 0, session, bgpdump_send_keepalive_cb);
+	    timer_add_periodic(&timer_root, &session->keepalive_timer, "keepalive",
+			       30, 0, session, bgpdump_send_keepalive_cb);
 	    break;
 
 	case BGP_MSG_NOTIFICATION:
@@ -1401,7 +1131,8 @@ bgpdump_read (struct bgp_session_ *session)
 	    }
 
 	    /* restart session */
-	    timer_add(&session->close_timer, "restart_session", 0, 0, session, &bgpdump_close_session_cb);
+	    timer_add(&timer_root, &session->close_timer, "restart_session",
+		      0, 0, session, &bgpdump_close_session_cb);
 	    return;
 
 	case BGP_MSG_KEEPALIVE:
@@ -1409,14 +1140,15 @@ bgpdump_read (struct bgp_session_ *session)
 
 	    /* reset hold timer */
 	    if (session->peer_holdtime) {
-		timer_add(&session->hold_timer, "holdtime", session->peer_holdtime, 0,
-			  session, &bgpdump_close_session_cb);
+		timer_add(&timer_root, &session->hold_timer, "holdtime",
+			  session->peer_holdtime, 0, session, &bgpdump_close_session_cb);
 	    }
 
 	    /*
 	     * Start the walk job.
 	     */
-	    timer_add(&session->write_job, "write_job", 1, 0, session, bgpdump_ribwalk_cb);
+	    timer_add_periodic(&timer_root, &session->write_job, "write_job",
+			       1, 0, session, bgpdump_ribwalk_cb);
 	    break;
 
 	case BGP_MSG_UPDATE:
@@ -1424,8 +1156,8 @@ bgpdump_read (struct bgp_session_ *session)
 
 	    /* reset hold timer */
 	    if (session->peer_holdtime) {
-		timer_add(&session->hold_timer, "holdtime", session->peer_holdtime, 0,
-			  session, &bgpdump_close_session_cb);
+		timer_add(&timer_root, &session->hold_timer, "holdtime",
+			  session->peer_holdtime, 0, session, &bgpdump_close_session_cb);
 	    }
 	    break;
 
@@ -1471,9 +1203,6 @@ bgpdump_read_cb (struct timer_ *timer)
 		LOG(ERROR, "  read() error %s\n", strerror(errno));
 		break;
 	    }
-
-	    /* Re-schedule read job*/
-	    timer_add(&session->read_job, "read_job", 1, 0, session, bgpdump_read_cb);
 	    break;
 	}
 
@@ -1484,7 +1213,7 @@ bgpdump_read_cb (struct timer_ *timer)
 	 * close timer is set, if something went wrong during reading. Bail.
 	 */
 	if (session->close_timer) {
-	    session->read_job = NULL;
+	    timer_del(session->read_job);
 	    return;
 	}
     }
@@ -1547,7 +1276,7 @@ bgpdump_blaster (void)
     }
     session->write_idx = 0;
 
-    CIRCLEQ_INIT(&timer_qhead); /* Init timer queue */
+    timer_init_root(&timer_root); /* Init timer queue */
 
     /* Logging */
     log_id[NORMAL].enable = true;
@@ -1559,14 +1288,16 @@ bgpdump_blaster (void)
 	/*
 	 * In case of blaster_dump option we'll just dump the BGP stream into a file.
 	 */
-	timer_add(&session->write_job, "write_job", 0, 0, session, bgpdump_ribwalk_cb);
+	timer_add(&timer_root, &session->write_job, "write_job",
+		  0, 20 * MSEC, session, bgpdump_ribwalk_cb);
 
     } else {
 
 	/*
 	 * Enqueue a connect event immediatly.
 	 */
-	timer_add(&session->connect_timer, "connect", 0, 0, session, &bgpdump_connect_session_cb);
+	timer_add(&timer_root, &session->connect_timer,
+		  "connect", 0, 0, session, &bgpdump_connect_session_cb);
     }
 
     /*
@@ -1578,5 +1309,5 @@ bgpdump_blaster (void)
     /*
      * Process the timer queue.
      */
-    timer_walk();
+    timer_walk(&timer_root);
 }
