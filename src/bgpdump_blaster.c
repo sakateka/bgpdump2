@@ -319,18 +319,16 @@ bgpdump_send_eor (struct bgp_session_ *session, uint16_t af, uint8_t safi)
 
 	push_be_uint(session, 8, 0xffffffffffffffff); /* marker */
 	push_be_uint(session, 8, 0xffffffffffffffff); /* marker */
-	push_be_uint(session, 2, 31); /* length */
+	push_be_uint(session, 2, 29); /* length */
 	push_be_uint(session, 1, BGP_MSG_UPDATE); /* message type */
 	push_be_uint(session, 2, 0); /* withdrawn routes length  */
-	push_be_uint(session, 2, 8); /* total path attributes length */
+	push_be_uint(session, 2, 6); /* total path attributes length */
 
 	push_be_uint(session, 1, 0x80); /* pa_flags */
-	push_be_uint(session, 1, 14); /* MP_REACH_NLRI */
-	push_be_uint(session, 1, 5); /* pa_length */
+	push_be_uint(session, 1, 15); /* MP_UNREACH_NLRI */
+	push_be_uint(session, 1, 3); /* pa_length */
 	push_be_uint(session, 2, afi); /* AFI */
 	push_be_uint(session, 1, safi); /* SAFI */
-	push_be_uint(session, 1, 0); /* NH length */
-	push_be_uint(session, 1, 0); /* reserved */
 
     }
     session->stats.updates_sent++;
