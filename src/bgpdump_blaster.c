@@ -520,6 +520,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	push_be_uint(session, 2, 0); /* length, will be overwritten later */
 	push_be_uint(session, 1, BGP_MSG_UPDATE); /* message type */
 
+	tpa_length_idx = 0;
 	if (!session->ribwalk_withdraw) {
 
 	    /*
