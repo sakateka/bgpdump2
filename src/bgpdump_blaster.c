@@ -554,9 +554,19 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	} else {
 
 	    /*
-	     * Encode withdraw.
+	     * Encode withdraw for ipv4.
 	     */
-	    push_be_uint(session, 2, 0); /* withdrawn routes length. Will be overwritten later */
+	    if (bgp_path->af == AF_INET) {
+		push_be_uint(session, 2, 0); /* withdrawn routes length. Will be overwritten later */
+	    } else {
+
+		/*
+		 * Encode withdraw for all other AFs.
+		 */
+		push_be_uint(session, 2, 0); /* withdrawn routes length  */
+		tpa_length_idx = session->write_idx;
+		push_be_uint(session, 2, 0); /* total path attributes length */
+	    }
 	}
 
 	/* Encode prefixes */
@@ -591,18 +601,24 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    /* first write a MP_REACH attribute header */
 
 	    push_be_uint(session, 1, 0x90); /* pa_flags: extended length */
-	    push_be_uint(session, 1, 14); /* MP_REACH_NLRI */
+	    if (session->ribwalk_withdraw) {
+		push_be_uint(session, 1, 15); /* MP_UNREACH_NLRI */
+	    } else {
+		push_be_uint(session, 1, 14); /* MP_REACH_NLRI */
+	    }
 	    push_be_uint(session, 2, 0); /* length, will be overwritten later */
 	    pa_start_idx = session->write_idx;
 	    push_be_uint(session, 2, 2); /* AFI ipv6 */
 	    push_be_uint(session, 1, 1); /* SAFI unicast */
 
-	    /* nexthop */
-	    push_be_uint(session, 1, 16); /* nexthop length */
-	    memcpy(session->write_buf+session->write_idx, bgp_path->nexthop, 16);
-	    session->write_idx += 16;
 
-	    push_be_uint(session, 1, 0); /* SNPA / reserved */
+	    if (!session->ribwalk_withdraw) {
+		/* encode nexthop for poistive update only */
+		push_be_uint(session, 1, 16); /* nexthop length */
+		memcpy(session->write_buf+session->write_idx, bgp_path->nexthop, 16);
+		session->write_idx += 16;
+		push_be_uint(session, 1, 0); /* SNPA / reserved */
+	    }
 
 	    CIRCLEQ_FOREACH(prefix, &bgp_path->path_qhead, prefix_qnode) {
 		if (session->ribwalk_prefix_index &&
@@ -627,11 +643,15 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    write_be_uint(session->write_buf+pa_start_idx-2, 2, length);
 
 	    /* overwrite total pa length */
-	    write_be_uint(session->write_buf+tpa_length_idx, 2, bgp_path->path_length + length + 4);
+	    if (session->ribwalk_withdraw) {
+		write_be_uint(session->write_buf+tpa_length_idx, 2, length + 4);
+	    } else {
+		write_be_uint(session->write_buf+tpa_length_idx, 2, bgp_path->path_length + length + 4);
+	    }
 	}
 	session->ribwalk_prefix_index = prefix_index; /* Update cursor */
 
-	if (session->ribwalk_withdraw)  {
+	if (session->ribwalk_withdraw && bgp_path->af == AF_INET)  {
 	    length = session->write_idx - (update_start_idx+16+3+2);
 	    write_be_uint(session->write_buf+update_start_idx+19, 2, length); /* overwrite withdrawn routes length */
 	    push_be_uint(session, 2, 0); /* total path attributes length */
