@@ -335,6 +335,35 @@ bgpdump_send_eor (struct bgp_session_ *session, uint16_t af, uint8_t safi)
 }
 
 void
+bgpdump_open_blaster_fump_file (struct bgp_session_ *session, uint16_t peer_index, struct peer *my_peer)
+{
+    char filename[128];
+    char bgp_id[sizeof("255.255.255.255")];
+    char ip_addr[sizeof("255.255.255.255")];
+
+    if (session->file) {
+
+	/* file already open */
+	return;
+    }
+
+    inet_ntop(AF_INET, &my_peer->bgp_id, bgp_id, sizeof(bgp_id));
+    inet_ntop(AF_INET, &my_peer->ipv4_addr, ip_addr, sizeof(ip_addr));
+    snprintf(filename, sizeof(filename), "peer%u-asn%u-bgpid%s-ip%s.bgp",
+	     peer_index, my_peer->asnumber, bgp_id, ip_addr);
+    session->file = fopen(filename, "w");
+    if (!session->file) {
+	LOG(ERROR, "Could not open blaster dump file %s", filename);
+	return;
+    }
+    session->sockfd = fileno(session->file);
+    if (session->sockfd == -1) {
+	LOG(ERROR, "Could not set FD for blaster dump file %s", filename);
+	return;
+    }
+}
+
+void
 bgpdump_ribwalk_cb (struct timer_ *timer)
 {
     struct bgp_session_ *session;
@@ -399,26 +428,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	 * When we dump to a file it's time to open it.
 	 */
 	if (blaster_dump) {
-	    char filename[128];
-	    char bgp_id[sizeof("255.255.255.255")];
-	    char ip_addr[sizeof("255.255.255.255")];
-	    struct peer *my_peer;
-
-	    my_peer = &peer_table[peer_index];
-	    inet_ntop(AF_INET, &my_peer->bgp_id, bgp_id, sizeof(bgp_id));
-	    inet_ntop(AF_INET, &my_peer->ipv4_addr, ip_addr, sizeof(ip_addr));
-	    snprintf(filename, sizeof(filename), "peer%u-asn%u-bgpid%s-ip%s.bgp",
-		     peer_index, my_peer->asnumber, bgp_id, ip_addr);
-	    session->file = fopen(filename, "w");
-	    if (!session->file) {
-		LOG(ERROR, "Could not open blaster dump file %s", filename);
-		return;
-	    }
-	    session->sockfd = fileno(session->file);
-	    if (session->sockfd == -1) {
-		LOG(ERROR, "Could not set FD for blaster dump file %s", filename);
-		return;
-	    }
+	    bgpdump_open_blaster_fump_file(session, peer_index, &peer_table[peer_index]);
 	}
     }
 
