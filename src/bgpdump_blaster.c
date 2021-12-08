@@ -335,7 +335,7 @@ bgpdump_send_eor (struct bgp_session_ *session, uint16_t af, uint8_t safi)
 }
 
 void
-bgpdump_open_blaster_fump_file (struct bgp_session_ *session, uint16_t peer_index, struct peer *my_peer)
+bgpdump_open_blaster_dump_file (struct bgp_session_ *session, uint16_t peer_index, struct peer *my_peer)
 {
     char filename[128];
     char bgp_id[sizeof("255.255.255.255")];
@@ -428,7 +428,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	 * When we dump to a file it's time to open it.
 	 */
 	if (blaster_dump) {
-	    bgpdump_open_blaster_fump_file(session, peer_index, &peer_table[peer_index]);
+	    bgpdump_open_blaster_dump_file(session, peer_index, &peer_table[peer_index]);
 	}
     }
 
