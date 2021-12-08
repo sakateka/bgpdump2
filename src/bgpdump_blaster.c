@@ -679,6 +679,12 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
      * Start the write loop.
      */
     bgpdump_fflush(session);
+
+    /*
+     * Reschedule.
+     */
+    timer_add(&timer_root, &session->write_job, "write_job",
+	      0, 20 * MSEC, session, bgpdump_ribwalk_cb);
 }
 
 /*
