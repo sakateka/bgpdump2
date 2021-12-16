@@ -772,7 +772,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		 * If there is not enough space for at least one full ipv4 prefix + label then bail.
 		 */
 		if (session->write_idx - update_start_idx >= (BGP_MAX_MESSAGE_SIZE - 8)) {
-		    LOG(IO, "Update full, encoded %u ipv6 labeled prefixes\n", prefix_index);
+		    LOG(IO, "Update full, encoded %u ipv4 labeled prefixes\n", prefix_index);
 		    break;
 		}
 	    }
