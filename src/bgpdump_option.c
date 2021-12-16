@@ -146,7 +146,6 @@ struct sockaddr_in6 nhs_addr6;
 int withdraw_delay = 0;
 
 extern char *progname;
-extern int safi;
 extern int qaf;
 
 extern unsigned long autnums[];

@@ -69,6 +69,17 @@ extern uint16_t mrt_type;
 extern uint16_t mrt_subtype;
 extern uint32_t mrt_length;
 
+/*
+ * Data structure used for parsing BGP path attributes.
+ * For each attribute the location is set using the pa_start array.
+ * For quick presence check the respective bit in the bitmap is set.
+ */
+struct bgpdump_pa_map_ {
+  uint8_t pa_bitmap[32]; /* one bit for each PA found */
+  uint8_t *pa_start[256]; /* start for each PA */
+  uint16_t pa_length[256]; /* length for each PA */
+};
+
 void
 bgpdump_process_bgp_attributes (struct bgp_route *, char *, char *);
 
@@ -80,6 +91,12 @@ bgpdump_process_table_dump_v2 (struct mrt_header *h, struct mrt_info *info,
                                char *data_end);
 char *
 bgpdump_print_extd_comm (struct bgp_extd_comm *comm);
+
+void
+bgpdump_index_bgp_pa (struct bgpdump_pa_map_ *pa_map, uint8_t *buffer, uint16_t buffer_len);
+
+uint16_t
+bgpdump_filter_bgp_pa_copy_nh (struct bgpdump_pa_map_ *pa_map, uint8_t *filtered_path, uint8_t *nexthop);
 
 #endif /*_BGPDUMP_DATA_H_*/
 

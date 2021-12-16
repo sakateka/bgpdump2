@@ -61,6 +61,7 @@ uint32_t sequence_number;
 uint16_t peer_index;
 char prefix[16];
 uint8_t prefix_length;
+uint32_t label;
 
 void
 bgpdump_process_mrt_header (struct mrt_header *h, struct mrt_info *info)
@@ -556,7 +557,7 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
           if (show && detail)
             {
               char buf[32];
-              inet_ntop (safi, route->nexthop, buf, sizeof (buf));
+              inet_ntop (qaf, route->nexthop, buf, sizeof (buf));
               printf ("    nexthop: %s\n", buf);
             }
           break;
@@ -775,17 +776,6 @@ bgpdump_rewrite_nh (uint8_t *raw_path, uint16_t path_length)
 }
 
 /*
- * Data structure used for parsing BGP path attributes.
- * For each attribute the location is set using the pa_start array.
- * For quick access the respective bit in the bitmap is set.
- */
-struct bgpdump_pa_map_ {
-  uint8_t pa_bitmap[32]; /* one bit for each PA found */
-  uint8_t *pa_start[256]; /* start for each PA */
-  uint16_t pa_length[256]; /* length for each PA */
-};
-
-/*
  * Mark a given PA type as found.
  */
 void
@@ -888,7 +878,7 @@ bgpdump_copy_pa (struct bgpdump_pa_map_ *pa_map, uint8_t pa_type, uint8_t **fpap
 }
 
 uint16_t
-bgpdump_filter_bgp_pa (struct bgpdump_pa_map_ *pa_map, uint8_t *filtered_path)
+bgpdump_filter_bgp_pa_copy_nh (struct bgpdump_pa_map_ *pa_map, uint8_t *filtered_path, uint8_t *nexthop)
 {
   uint8_t *fp;
 
@@ -905,39 +895,86 @@ bgpdump_filter_bgp_pa (struct bgpdump_pa_map_ *pa_map, uint8_t *filtered_path)
   bgpdump_copy_pa(pa_map, EXTENDED_COMMUNITY, &fp);
   bgpdump_copy_pa(pa_map, LARGE_COMMUNITY, &fp);
 
+  if (bgpdump_get_pa_bit(pa_map, MP_REACH_NLRI)) {
+
+    uint8_t pa_flags, nh_len;
+    uint8_t *buffer;
+
+    /*
+     * Extract the nexthop.
+     */
+    buffer = pa_map->pa_start[MP_REACH_NLRI];
+
+    pa_flags = *buffer;
+    if (pa_flags & 0x10) { /* extended length ? */
+      buffer += 4;
+    } else {
+      buffer += 3;
+    }
+
+    nh_len = *(buffer+3);
+    buffer += 4;
+    memcpy(nexthop, buffer, nh_len);
+  }
+
   return fp - filtered_path;
 }
 
-void
-bgpdump_copy_nh_mpreach_pa (struct bgpdump_pa_map_ *pa_map, struct bgp_path_ *bgp_path)
+
+uint16_t
+bgpdump_filter_bgp_pa_trim_nh (struct bgpdump_pa_map_ *pa_map, uint8_t *filtered_path)
 {
-  uint16_t afi;
-  uint8_t safi, pa_flags, nh_len;
-  uint8_t *buffer;
+  uint8_t *fp;
 
-  if (!bgpdump_get_pa_bit(pa_map, MP_REACH_NLRI)) {
-    return;
-  }
+  fp = filtered_path;
 
-  buffer = pa_map->pa_start[MP_REACH_NLRI];
+  /* Copy the known PAs */
+  bgpdump_copy_pa(pa_map, ORIGIN, &fp);
+  bgpdump_copy_pa(pa_map, NEXT_HOP, &fp);
+  bgpdump_copy_pa(pa_map, AS_PATH, &fp);
+  bgpdump_copy_pa(pa_map, MULTI_EXIT_DISC, &fp);
+  bgpdump_copy_pa(pa_map, ATOMIC_AGGREGATE, &fp);
+  bgpdump_copy_pa(pa_map, AGGREGATOR, &fp);
+  bgpdump_copy_pa(pa_map, COMMUNITY, &fp);
+  bgpdump_copy_pa(pa_map, EXTENDED_COMMUNITY, &fp);
+  bgpdump_copy_pa(pa_map, LARGE_COMMUNITY, &fp);
 
-  pa_flags = *buffer;
-  if (pa_flags & 0x10) { /* extended length ? */
+  if (bgpdump_get_pa_bit(pa_map, MP_REACH_NLRI)) {
+
+    uint16_t afi;
+    uint8_t safi, pa_flags, nh_len;
+    uint8_t *buffer;
+
+    /*
+     * Truncate the NLRI by copying the nexthop.
+     */
+    buffer = pa_map->pa_start[MP_REACH_NLRI];
+
+    pa_flags = *buffer;
+    if (pa_flags & 0x10) { /* extended length ? */
+      buffer += 4;
+    } else {
+      buffer += 3;
+    }
+
+    afi = *buffer << 8 | *(buffer+1);
+    safi = *(buffer+2);
+    nh_len = *(buffer+3);
     buffer += 4;
-  } else {
-    buffer += 3;
+
+    *fp++ = pa_flags | 0x10; /* extended length */
+    *fp++ = MP_REACH_NLRI;
+    *fp++ = 0;
+    *fp++ = 4 + nh_len; /* PA length */
+    *fp++ = 0;
+    *fp++ = afi;
+    *fp++ = safi;
+    *fp++ = nh_len;
+    memcpy(fp, buffer, nh_len);
+    fp += nh_len;
   }
 
-  afi = *buffer << 8 | *(buffer+1);
-  safi = *(buffer+2);
-  nh_len = *(buffer+3);
-
-  if (nh_len != 16 || afi != 2 || safi != 1) {
-    return;
-  }
-
-  /* copy nexthop */
-  memcpy(bgp_path->nexthop, buffer+4, 16);
+  return fp - filtered_path;
 }
 
 void
@@ -951,10 +988,10 @@ bgpdump_add_prefix (struct bgp_route *route, int index, char *raw_path, uint16_t
   uint8_t filtered_path[4096];
 
   /*
-   * First index the path attributes. We may need to filter the ipv6 prefix list in MP_REACH_NLRI PA.
+   * First index the path attributes. We may need to filter the prefix list in MP_REACH_NLRI PA.
    */
   bgpdump_index_bgp_pa(&pa_map, (uint8_t *)raw_path, path_length);
-  filtered_path_length = bgpdump_filter_bgp_pa(&pa_map, filtered_path);
+  filtered_path_length = bgpdump_filter_bgp_pa_trim_nh(&pa_map, filtered_path);
   if (!filtered_path_length) {
     return;
   }
@@ -978,7 +1015,11 @@ bgpdump_add_prefix (struct bgp_route *route, int index, char *raw_path, uint16_t
     /*
      * Add fresh BGP path to the tree.
      */
-    bgpdump_copy_nh_mpreach_pa(&pa_map, bgp_path);
+    if (route->label) {
+      bgp_path->safi = 4; /* labeled-unicast */
+    } else {
+      bgp_path->safi = 1; /* unicast */
+    }
     bgp_path->af = qaf;
     bgp_path->pnode = ptree_add((char *)filtered_path, filtered_path_length * 8, bgp_path,
 				peer_table[index].path_root);
@@ -994,6 +1035,7 @@ bgpdump_add_prefix (struct bgp_route *route, int index, char *raw_path, uint16_t
   bgp_prefix = calloc(1, sizeof(struct bgp_prefix_));
   memcpy(&bgp_prefix->prefix, &route->prefix, (route->prefix_length + 7) / 8);
   bgp_prefix->prefix_length = route->prefix_length;
+  bgp_prefix->label = route->label;
   bgp_prefix->index = index;
 
   if (bgp_path->af == AF_INET) {
@@ -1077,6 +1119,7 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
       memset (&route, 0, sizeof (route));
       memcpy (route.prefix, prefix, (prefix_length + 7) / 8);
       route.prefix_length = prefix_length;
+      route.label = label;
 
       if ((brief || show || lookup || udiff || stats ||
 	   compat_mode || autsiz || heatmap) && (!blaster || !blaster_dump)) {
@@ -1166,7 +1209,7 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
           //route_print (&route);
           memcpy (rp, &route, sizeof (struct bgp_route));
 
-          if (safi == AF_INET)
+          if (qaf == AF_INET)
             ptree_add ((char *)&rp->prefix, rp->prefix_length,
                        (void *)rp, peer_ptree[peer_spec_i]);
         }
@@ -1240,7 +1283,7 @@ bgpdump_process_table_v2_rib_unicast (struct mrt_header *h,
   if (show && debug)
     {
       char pbuf[64];
-      inet_ntop (safi, prefix, pbuf, sizeof (pbuf));
+      inet_ntop (qaf, prefix, pbuf, sizeof (pbuf));
       printf ("Sequence Number: %lu Prefix %s/%d Entry Count: %d\n",
               (unsigned long) sequence_number,
               pbuf, prefix_length, entry_count);
@@ -1404,6 +1447,86 @@ bgpdump_process_table_v2_rib_unicast (struct mrt_header *h,
 }
 
 void
+bgpdump_process_table_v2_rib_generic (struct mrt_header *h,
+                                      struct mrt_info *info,
+                                      char *data_end)
+{
+  char *p;
+  int size;
+  int i;
+
+  uint32_t prefix_size;
+  uint16_t entry_count;
+  uint16_t afi;
+  uint8_t safi;
+
+  p = (char *)h + sizeof (struct mrt_header);
+
+  size = sizeof (sequence_number);
+  BUFFER_OVERRUN_CHECK(p, size, data_end);
+  sequence_number = ntohl (*(uint32_t *)p);
+  p += size;
+
+  size = sizeof(afi) + sizeof(safi);
+  BUFFER_OVERRUN_CHECK(p, size, data_end);
+  afi = ntohs(*(uint16_t *)p);
+  safi = *(uint8_t *)(p+2);
+  p += size;
+
+  /*
+   * Sanity checks.
+   */
+  if (qaf == AF_INET && afi != 1) {
+    return;
+  }
+  if (qaf == AF_INET6 && afi != 2) {
+    return;
+  }
+
+  size = sizeof (prefix_length);
+  BUFFER_OVERRUN_CHECK(p, size, data_end);
+  if (safi == 4) {
+    prefix_length = *(uint8_t *)p - 24;
+  } else {
+    prefix_length = *(uint8_t *)p;
+  }
+  p += size;
+
+  label = 0;
+  if (safi == 4) {
+    size = 3; /* 3 byte per label */
+    BUFFER_OVERRUN_CHECK(p, size, data_end);
+    label = *(uint8_t *)p << 16 | *(uint8_t *)(p+1) << 8 | *(uint8_t *)(p+2);
+    label = label >> 4;
+    p += size;
+  }
+
+  prefix_size = ((prefix_length + 7) / 8);
+  size = prefix_size;
+  BUFFER_OVERRUN_CHECK(p, size, data_end);
+  memset (prefix, 0, sizeof (prefix));
+  memcpy (prefix, p, prefix_size);
+  p += size;
+
+  size = sizeof (entry_count);
+  BUFFER_OVERRUN_CHECK(p, size, data_end);
+  entry_count = ntohs (*(uint16_t *)p);
+  p += size;
+
+  if (show && debug) {
+    char pbuf[64];
+    inet_ntop (qaf, prefix, pbuf, sizeof (pbuf));
+    printf ("Sequence Number: %lu Prefix %s/%d Entry Count: %d\n",
+	    (unsigned long) sequence_number,
+	    pbuf, prefix_length, entry_count);
+  }
+
+  for (i = 0; i < entry_count && p < data_end; i++) {
+    bgpdump_process_table_v2_rib_entry (i, &p, info, data_end);
+  }
+}
+
+void
 bgpdump_process_table_dump_v2 (struct mrt_header *h, struct mrt_info *info,
                                char *data_end)
 {
@@ -1415,15 +1538,19 @@ bgpdump_process_table_dump_v2 (struct mrt_header *h, struct mrt_info *info,
     case BGPDUMP_TABLE_V2_RIB_IPV4_UNICAST:
       if (! peer_table_only && qaf == AF_INET )
         {
-          safi = AF_INET;
           bgpdump_process_table_v2_rib_unicast (h, info, data_end);
         }
       break;
     case BGPDUMP_TABLE_V2_RIB_IPV6_UNICAST:
       if (! peer_table_only && qaf == AF_INET6 )
         {
-          safi = AF_INET6;
           bgpdump_process_table_v2_rib_unicast (h, info, data_end);
+        }
+      break;
+    case BGPDUMP_TABLE_V2_RIB_GENERIC:
+      if (! peer_table_only)
+        {
+          bgpdump_process_table_v2_rib_generic (h, info, data_end);
         }
       break;
     default:

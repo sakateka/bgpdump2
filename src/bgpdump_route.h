@@ -53,8 +53,8 @@ struct __attribute__((__packed__)) bgp_route
   uint8_t origin;
   uint8_t atomic_aggregate;
   uint32_t localpref;
-  uint32_t localpref_found;
   uint32_t med;
+  uint32_t label;
   uint32_t community[ROUTE_COMM_LIMIT];
   struct bgp_extd_comm extd_community[ROUTE_COMM_LIMIT];
   uint8_t community_size;
@@ -69,10 +69,10 @@ struct __attribute__((__packed__)) bgp_route
 struct __attribute__((__packed__)) bgp_path_
 {
   struct ptree_node *pnode;
-  uint8_t nexthop[16]; /* for AF_INET6 only */
   uint32_t refcount;
-  uint16_t af;
   uint16_t path_length;
+  uint8_t af;
+  uint8_t safi;
   /* List of all prefixes per path */
   CIRCLEQ_HEAD(bgp_path_head_, bgp_prefix_ ) path_qhead;
 };
@@ -84,7 +84,8 @@ struct __attribute__((__packed__)) bgp_prefix_
   struct bgp_path_ *path;
   uint8_t prefix_length;
   uint8_t afi;
-  uint32_t index;
+  uint16_t index;
+  uint32_t label;
   /* List of all prefixes per path */
   CIRCLEQ_ENTRY(bgp_prefix_) prefix_qnode;
 };

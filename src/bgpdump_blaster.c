@@ -260,12 +260,22 @@ bgpdump_fflush (struct bgp_session_ *session)
 }
 
 void
-bgpdump_push_prefix(struct bgp_session_ *session, struct bgp_prefix_ *prefix)
+bgpdump_push_prefix(struct bgp_session_ *session, struct bgp_path_ *bgp_path,
+		    struct bgp_prefix_ *prefix)
 {
     int idx, length;
+    uint8_t prefix_length;
 
-    *(session->write_buf + session->write_idx) = prefix->prefix_length;
-    session->write_idx++;
+    prefix_length = prefix->prefix_length;
+    if (bgp_path->safi == 4) {
+	prefix_length += 24; /* extend prefix length 24 bits of label */
+    }
+    push_be_uint(session, 1, prefix_length); /* prefix length */
+
+    if (bgp_path->safi == 4) {
+	push_be_uint(session, 3, (prefix->label << 4) | 1); /* label + bos */
+    }
+
     length = (prefix->prefix_length + 7) / 8;
     for (idx = 0; idx < length; idx++) {
 	*(session->write_buf + session->write_idx) = prefix->prefix[idx];
@@ -374,6 +384,11 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
     int peer_index, prefix_index;
     uint update_start_idx, tpa_length_idx, length;
     uint updates_encoded;
+
+    uint8_t nexthop[16];
+    uint16_t filtered_path_length;
+    uint8_t filtered_path[4096];
+    struct bgpdump_pa_map_ pa_map;
 
     session = (struct bgp_session_ *)timer->data;
 
@@ -485,7 +500,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		/*
 		 * We're done. Send End of RIB marker which is an empty BGP update.
 		 */
-		bgpdump_send_eor(session, bgp_path->af, 1);
+		bgpdump_send_eor(session, bgp_path->af, bgp_path->safi);
 
 		bgpdump_fflush(session);
 		LOG(NORMAL, "Sent %u updates, %u prefixes sent, %u prefixes withdrawn, %u octets\n",
@@ -541,10 +556,11 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    push_be_uint(session, 2, bgp_path->path_length); /* total path attributes length */
 
 	    /* path attributes */
-	    memcpy(session->write_buf+session->write_idx,
-		   session->ribwalk_pnode->key,
-		   bgp_path->path_length);
-	    session->write_idx += bgp_path->path_length;
+	    memset(nexthop, 0, sizeof(nexthop));
+	    bgpdump_index_bgp_pa(&pa_map, (uint8_t *)session->ribwalk_pnode->key, bgp_path->path_length);
+	    filtered_path_length = bgpdump_filter_bgp_pa_copy_nh(&pa_map, filtered_path, nexthop);
+	    memcpy(session->write_buf+session->write_idx, filtered_path, filtered_path_length);
+	    session->write_idx += filtered_path_length;
 
 	    if (log_id[UPDATE].enable) {
 		int old_show, old_detail;
@@ -583,16 +599,16 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	/* Encode prefixes */
 	prefix_index = 0;
 
-	if (bgp_path->af == AF_INET) {
+	if (bgp_path->af == AF_INET && bgp_path->safi == 1) {
 
-	    /* ipv4 */
+	    /* ipv4 unicast */
 	    CIRCLEQ_FOREACH(prefix, &bgp_path->path_qhead, prefix_qnode) {
 		if (session->ribwalk_prefix_index &&
 		    (prefix_index < session->ribwalk_prefix_index)) {
 		    prefix_index++;
 		    continue;
 		}
-		bgpdump_push_prefix(session, prefix);
+		bgpdump_push_prefix(session, bgp_path, prefix);
 		prefix_index++;
 
 		/*
@@ -603,9 +619,9 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		    break;
 		}
 	    }
-	} else if (bgp_path->af == AF_INET6) {
+	} else if (bgp_path->af == AF_INET6 && bgp_path->safi == 1) {
 
-	    /* ipv6 */
+	    /* ipv6 unicast */
 
 	    uint pa_start_idx;
 
@@ -624,9 +640,9 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 
 
 	    if (!session->ribwalk_withdraw) {
-		/* encode nexthop for poistive update only */
+		/* encode nexthop for positive update only */
 		push_be_uint(session, 1, 16); /* nexthop length */
-		memcpy(session->write_buf+session->write_idx, bgp_path->nexthop, 16);
+		memcpy(session->write_buf+session->write_idx, nexthop, 16);
 		session->write_idx += 16;
 		push_be_uint(session, 1, 0); /* SNPA / reserved */
 	    }
@@ -637,7 +653,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		    prefix_index++;
 		    continue;
 		}
-		bgpdump_push_prefix(session, prefix);
+		bgpdump_push_prefix(session, bgp_path, prefix);
 		prefix_index++;
 
 		/*
@@ -657,14 +673,129 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    if (session->ribwalk_withdraw) {
 		write_be_uint(session->write_buf+tpa_length_idx, 2, length + 4);
 	    } else {
-		write_be_uint(session->write_buf+tpa_length_idx, 2, bgp_path->path_length + length + 4);
+		write_be_uint(session->write_buf+tpa_length_idx, 2, filtered_path_length + length + 4);
+	    }
+	} else if (bgp_path->af == AF_INET6 && bgp_path->safi == 4) {
+
+	    /* ipv6 labeled unicast */
+
+	    uint pa_start_idx;
+
+	    /* first write a MP_REACH attribute header */
+
+	    push_be_uint(session, 1, 0x90); /* pa_flags: extended length */
+	    if (session->ribwalk_withdraw) {
+		push_be_uint(session, 1, 15); /* MP_UNREACH_NLRI */
+	    } else {
+		push_be_uint(session, 1, 14); /* MP_REACH_NLRI */
+	    }
+	    push_be_uint(session, 2, 0); /* length, will be overwritten later */
+	    pa_start_idx = session->write_idx;
+	    push_be_uint(session, 2, 2); /* AFI ipv6 */
+	    push_be_uint(session, 1, 4); /* SAFI labeled unicast */
+
+
+	    if (!session->ribwalk_withdraw) {
+		/* encode nexthop for positive update only */
+		push_be_uint(session, 1, 16); /* nexthop length */
+		memcpy(session->write_buf+session->write_idx, nexthop, 16);
+		session->write_idx += 16;
+		push_be_uint(session, 1, 0); /* SNPA / reserved */
+	    }
+
+	    CIRCLEQ_FOREACH(prefix, &bgp_path->path_qhead, prefix_qnode) {
+		if (session->ribwalk_prefix_index &&
+		    (prefix_index < session->ribwalk_prefix_index)) {
+		    prefix_index++;
+		    continue;
+		}
+		bgpdump_push_prefix(session, bgp_path, prefix);
+		prefix_index++;
+
+		/*
+		 * If there is not enough space for at least one full ipv6 prefix + label then bail.
+		 */
+		if (session->write_idx - update_start_idx >= (BGP_MAX_MESSAGE_SIZE - 20)) {
+		    LOG(IO, "Update full, encoded %u ipv6 labeled prefixes\n", prefix_index);
+		    break;
+		}
+	    }
+
+	    /* overwrite pa length */
+	    length = session->write_idx - pa_start_idx;
+	    write_be_uint(session->write_buf+pa_start_idx-2, 2, length);
+
+	    /* overwrite total pa length */
+	    if (session->ribwalk_withdraw) {
+		write_be_uint(session->write_buf+tpa_length_idx, 2, length + 4);
+	    } else {
+		write_be_uint(session->write_buf+tpa_length_idx, 2, filtered_path_length + length + 4);
+	    }
+	} else if (bgp_path->af == AF_INET && bgp_path->safi == 4) {
+
+	    /* ipv4 labeled unicast */
+
+	    uint pa_start_idx;
+
+	    /* first write a MP_REACH attribute header */
+
+	    push_be_uint(session, 1, 0x90); /* pa_flags: extended length */
+	    if (session->ribwalk_withdraw) {
+		push_be_uint(session, 1, 15); /* MP_UNREACH_NLRI */
+	    } else {
+		push_be_uint(session, 1, 14); /* MP_REACH_NLRI */
+	    }
+	    push_be_uint(session, 2, 0); /* length, will be overwritten later */
+	    pa_start_idx = session->write_idx;
+	    push_be_uint(session, 2, 1); /* AFI ipv4 */
+	    push_be_uint(session, 1, 4); /* SAFI labeled unicast */
+
+
+	    if (!session->ribwalk_withdraw) {
+		/* encode nexthop for positive update only */
+		push_be_uint(session, 1, 4); /* nexthop length */
+		memcpy(session->write_buf+session->write_idx, nexthop, 4);
+		session->write_idx += 4;
+		push_be_uint(session, 1, 0); /* SNPA / reserved */
+	    }
+
+	    CIRCLEQ_FOREACH(prefix, &bgp_path->path_qhead, prefix_qnode) {
+		if (session->ribwalk_prefix_index &&
+		    (prefix_index < session->ribwalk_prefix_index)) {
+		    prefix_index++;
+		    continue;
+		}
+		bgpdump_push_prefix(session, bgp_path, prefix);
+		prefix_index++;
+
+		/*
+		 * If there is not enough space for at least one full ipv4 prefix + label then bail.
+		 */
+		if (session->write_idx - update_start_idx >= (BGP_MAX_MESSAGE_SIZE - 8)) {
+		    LOG(IO, "Update full, encoded %u ipv6 labeled prefixes\n", prefix_index);
+		    break;
+		}
+	    }
+
+	    /* overwrite pa length */
+	    length = session->write_idx - pa_start_idx;
+	    write_be_uint(session->write_buf+pa_start_idx-2, 2, length);
+
+	    /* overwrite total pa length */
+	    if (session->ribwalk_withdraw) {
+		write_be_uint(session->write_buf+tpa_length_idx, 2, length + 4);
+	    } else {
+		write_be_uint(session->write_buf+tpa_length_idx, 2, filtered_path_length + length + 4);
 	    }
 	}
+
 	session->ribwalk_prefix_index = prefix_index; /* Update cursor */
 
-	if (session->ribwalk_withdraw && bgp_path->af == AF_INET)  {
+	if (session->ribwalk_withdraw && bgp_path->af == AF_INET && bgp_path->safi == 1)  {
+
+	    /* overwrite withdrawn routes length */
 	    length = session->write_idx - (update_start_idx+16+3+2);
-	    write_be_uint(session->write_buf+update_start_idx+19, 2, length); /* overwrite withdrawn routes length */
+	    write_be_uint(session->write_buf+update_start_idx+19, 2, length);
 	    push_be_uint(session, 2, 0); /* total path attributes length */
 	}
 
