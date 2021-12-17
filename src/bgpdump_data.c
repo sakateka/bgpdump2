@@ -753,7 +753,7 @@ bgpdump_rewrite_nh (uint8_t *raw_path, uint16_t path_length)
 	memcpy(pa, &nhs_addr4.sin_addr, 4);
       }
       return;
-    case MP_REACH_NLRI: /* ipv6 next hop */
+    case MP_REACH_NLRI:
       {
 	uint16_t afi;
 	uint8_t safi, nh_len;
@@ -766,6 +766,17 @@ bgpdump_rewrite_nh (uint8_t *raw_path, uint16_t path_length)
 	if (nhs == AF_INET6 && afi == 2 && safi == 1 && nh_len == 16) {
 	  memcpy(pa+4, &nhs_addr6.sin6_addr, 16);
 	}
+
+	/* ipv6 labeled unicast */
+	if (nhs == AF_INET6 && afi == 2 && safi == 4 && nh_len == 16) {
+	  memcpy(pa+4, &nhs_addr6.sin6_addr, 16);
+	}
+
+	/* ipv4 labeled unicast */
+	if (nhs == AF_INET && afi == 1 && safi == 4 && nh_len == 4) {
+	  memcpy(pa+4, &nhs_addr4.sin_addr, 4);
+	}
+
       }
       return;
     default:
