@@ -323,7 +323,9 @@ bgpdump_send_eor (struct bgp_session_ *session, uint16_t af, uint8_t safi)
 
 	/* all-other afi/safi pairs */
 	afi = 0;
-	if (af == AF_INET6) {
+	if (af == AF_INET) {
+	    afi = 1;
+	} else if (af == AF_INET6) {
 	    afi = 2;
 	}
 
