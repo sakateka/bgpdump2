@@ -772,6 +772,16 @@ bgpdump_rewrite_nh (uint8_t *raw_path, uint16_t path_length)
 	  memcpy(pa+4, &nhs_addr6.sin6_addr, 16);
 	}
 
+	/* ipv6 unicast, mapped ipv4 nexthop */
+	if (nhs == AF_INET && afi == 2 && safi == 1 && nh_len == 16) {
+	  memcpy(pa+4+12, &nhs_addr4.sin_addr, 4);
+	}
+
+	/* ipv6 labeled unicast, mapped ipv4 nexthop */
+	if (nhs == AF_INET && afi == 2 && safi == 4 && nh_len == 16) {
+	  memcpy(pa+4+12, &nhs_addr4.sin_addr, 4);
+	}
+
 	/* ipv4 labeled unicast */
 	if (nhs == AF_INET && afi == 1 && safi == 4 && nh_len == 4) {
 	  memcpy(pa+4, &nhs_addr4.sin_addr, 4);
