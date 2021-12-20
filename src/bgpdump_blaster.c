@@ -555,12 +555,12 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	     */
 	    push_be_uint(session, 2, 0); /* withdrawn routes length  */
 	    tpa_length_idx = session->write_idx;
-	    push_be_uint(session, 2, bgp_path->path_length); /* total path attributes length */
 
 	    /* path attributes */
 	    memset(nexthop, 0, sizeof(nexthop));
 	    bgpdump_index_bgp_pa(&pa_map, (uint8_t *)session->ribwalk_pnode->key, bgp_path->path_length);
 	    filtered_path_length = bgpdump_filter_bgp_pa_copy_nh(&pa_map, filtered_path, nexthop);
+	    push_be_uint(session, 2, filtered_path_length); /* total path attributes length */
 	    memcpy(session->write_buf+session->write_idx, filtered_path, filtered_path_length);
 	    session->write_idx += filtered_path_length;
 
