@@ -580,8 +580,8 @@ MAKEFLAGS=
 # Identity of this package.
 PACKAGE_NAME='bgpdump2'
 PACKAGE_TARNAME='bgpdump2'
-PACKAGE_VERSION='0.1'
-PACKAGE_STRING='bgpdump2 0.1'
+PACKAGE_VERSION='2.0.8'
+PACKAGE_STRING='bgpdump2 2.0.8'
 PACKAGE_BUGREPORT='yasu@nttv6.jp'
 PACKAGE_URL=''
 

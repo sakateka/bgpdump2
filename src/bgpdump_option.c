@@ -16,6 +16,7 @@
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -162,7 +163,7 @@ usage ()
 void
 version ()
 {
-  printf ("Version: %s.\n", BGPDUMP_VERSION);
+  printf ("Version: %s.\n", PACKAGE_VERSION);
 }
 
 int
