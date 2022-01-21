@@ -15,7 +15,7 @@ void bgpdump_blaster(void);
 char *fmt_timestamp(void);
 
 #define BGP_TCP_PORT 179
-#define BGP_READBUFSIZE  65536
+#define BGP_READBUFSIZE  1024*256
 #define BGP_WRITEBUFSIZE 1024*256
 #define BGP_MAX_MESSAGE_SIZE 4096
 

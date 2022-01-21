@@ -548,6 +548,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	push_be_uint(session, 1, BGP_MSG_UPDATE); /* message type */
 
 	tpa_length_idx = 0;
+	filtered_path_length = 0;
 	if (!session->ribwalk_withdraw) {
 
 	    /*
@@ -1107,6 +1108,8 @@ bgpdump_send_open_cb (struct timer_ *timer)
 
     session = (struct bgp_session_ *)timer->data;
 
+    timer_del(session->connect_timer);
+
     push_open_message(session);
     bgpdump_fflush(session);
 
@@ -1122,7 +1125,7 @@ bgpdump_send_open_cb (struct timer_ *timer)
      * Start the read job.
      */
     timer_add_periodic(&timer_root, &session->read_job, "read_job",
-		       1, 0, session, bgpdump_read_cb);
+		       0, 20 * MSEC, session, bgpdump_read_cb);
 }
 
 void
@@ -1132,6 +1135,10 @@ bgpdump_connect_session_cb (struct timer_ *timer)
     struct bgp_session_ *session;
     char protoname[] = "tcp";
     int af, res;
+    fd_set myset;
+    struct timeval tv;
+    int valopt;
+    socklen_t socklen;
 
     session = (struct bgp_session_ *)timer->data;
 
@@ -1180,74 +1187,69 @@ bgpdump_connect_session_cb (struct timer_ *timer)
 
     /* Do the actual connection. */
     if (res < 0) {
+	if (errno != EINPROGRESS) {
+	    LOG(ERROR, "Error connecting to %s %d - %s\n", blaster_addr, errno, strerror(errno));
+	    goto timeout_reconnect;
+	}
 
-	int res;
-	fd_set myset;
-	struct timeval tv;
-	int valopt;
-	socklen_t lon;
+	LOG(NORMAL, "Connecting to %s\n", blaster_addr);
 
-	if (errno == EINPROGRESS) {
+	tv.tv_sec = 3;
+	tv.tv_usec = 0;
+	FD_ZERO(&myset);
+	FD_SET(session->sockfd, &myset);
+	res = select(session->sockfd+1, NULL, &myset, NULL, &tv);
+	if (res < 0 && errno != EINTR) {
+	    LOG(ERROR, "Error selecting socket to %s %d - %s\n", blaster_addr, errno, strerror(errno));
+	    exit(0);
+	}
 
-	    LOG(NORMAL, "Connecting to %s\n", blaster_addr);
+	if (res > 0) {
 
-	    do {
-		tv.tv_sec = 5;
-		tv.tv_usec = 0;
-		FD_ZERO(&myset);
-		FD_SET(session->sockfd, &myset);
-		res = select(session->sockfd+1, NULL, &myset, NULL, &tv);
-		if (res < 0 && errno != EINTR) {
-		    LOG(ERROR, "Error connecting to %s %d - %s\n", blaster_addr, errno, strerror(errno));
-		    exit(0);
-		}
-		else if (res > 0) {
+	    /*
+	     * Socket selected for write.
+	     */
+	    socklen = sizeof(int);
+	    if (getsockopt(session->sockfd, SOL_SOCKET, SO_ERROR, (void*)(&valopt), &socklen) < 0) {
+		LOG(ERROR, "Error in getsockopt() %d - %s\n", errno, strerror(errno));
+		exit(0);
+	    }
+	    /* Check the return value */
+	    if (valopt) {
+		LOG(ERROR, "Error in delayed connection() %d - %s\n", valopt, strerror(valopt));
+		exit(0);
+	    }
 
-		    /*
-		     * Socket selected for write.
-		     */
-		    lon = sizeof(int);
-		    if (getsockopt(session->sockfd, SOL_SOCKET, SO_ERROR, (void*)(&valopt), &lon) < 0) {
-			LOG(ERROR, "Error in getsockopt() %d - %s\n", errno, strerror(errno));
-			exit(0);
-		    }
-		    /* Check the return value */
-		    if (valopt) {
-			LOG(ERROR, "Error in delayed connection() %d - %s\n", valopt, strerror(valopt));
-			exit(0);
-		    }
+	    LOG(NORMAL, "Socket to %s is writeable\n", blaster_addr);
 
-		    LOG(NORMAL, "Socket to %s is writeable\n", blaster_addr);
+	    /* Now lets try to set the receive buffer size */
+	    valopt = BGP_READBUFSIZE;
+	    res = setsockopt(session->sockfd, SOL_SOCKET, SO_RCVBUF,  &valopt, sizeof(int));
+	    if (res != 0) {
+		LOG(ERROR, "Unable to set send buffer size, continuing with default size\n");
+	    }
 
-		    #if 1
-		    {
-			/* Now lets try to set the send buffer size to 4194304 bytes */
-			int size = 4096*1024;
-			int err;
-			err = setsockopt(session->sockfd, SOL_SOCKET, SO_SNDBUF,  &size, sizeof(int));
-			if (err != 0) {
-			    LOG(ERROR, "Unable to set send buffer size, continuing with default size\n");
-			}
-		    }
-		    #endif
+	    /* Now lets try to set the send buffer size */
+	    valopt = BGP_WRITEBUFSIZE;
+	    res = setsockopt(session->sockfd, SOL_SOCKET, SO_SNDBUF,  &valopt, sizeof(int));
+	    if (res != 0) {
+		LOG(ERROR, "Unable to set send buffer size, continuing with default size\n");
+	    }
 
-		    timer_add(&timer_root, &session->send_open_timer, "send_open",
-			      0, 0, session, &bgpdump_send_open_cb);
-		    break;
-		} else {
-
-		    LOG(NORMAL, "Connect timeout\n");
-		    close(session->sockfd);
-		    session->sockfd = -1;
-
-		    /* did not work, retry in 5s */
-		    timer_add(&timer_root, &session->connect_timer, "connect",
-			      5, 0, session, &bgpdump_connect_session_cb);
-		    return;
-		}
-	    } while (1);
+	    timer_add(&timer_root, &session->send_open_timer, "send_open",
+		      0, 0, session, &bgpdump_send_open_cb);
+	    return;
 	}
     }
+
+timeout_reconnect:
+    LOG(NORMAL, "Connect timeout\n");
+    close(session->sockfd);
+    session->sockfd = -1;
+
+    /* did not work, retry in 5s */
+    timer_add_periodic(&timer_root, &session->connect_timer, "connect",
+		       5, 0, session, &bgpdump_connect_session_cb);
 }
 
 /*
@@ -1273,7 +1275,7 @@ bgpdump_read (struct bgp_session_ *session)
 	    break;
 	}
 
-	LOG(NORMAL, "Read %s message (%u), length %u from %s\n",
+	LOG(IO, "Read %s message (%u), length %u from %s\n",
 	    keyval_get_key(bgp_msg_names, type), type, length, blaster_addr);
 
 	switch (type) {
@@ -1428,11 +1430,9 @@ bgpdump_rebase_read_buffer (struct bgp_session_ *session)
     int size;
 
     /*
-     * As per the comparison below a buffersize
-     * of 64K and a divisor of 16 ensures that we
-     * always can read a full BGP message of 4K.
+     * Make sure to always be able to read a full BGP message of 4K.
      */
-    if ((session->read_buf_start - session->read_buf) > (BGP_READBUFSIZE / 16)) {
+    if ((session->read_buf_start - session->read_buf) > (BGP_READBUFSIZE - 4096)) {
 
         /*
          * Copy what is left to the buffer start.

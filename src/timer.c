@@ -379,7 +379,7 @@ timer_add (timer_root_s *root,
             timer->data = data;
             timer->cb = cb;
         }
-	    return;
+	return;
     }
 
     if (CIRCLEQ_EMPTY(&root->timer_gc_qhead)) {

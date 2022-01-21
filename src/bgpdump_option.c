@@ -163,7 +163,7 @@ usage ()
 void
 version ()
 {
-  printf ("Version: %s.\n", PACKAGE_VERSION);
+  printf ("Version: %s\n", PACKAGE_VERSION);
 }
 
 int
