@@ -910,6 +910,7 @@ bgpdump_filter_bgp_pa_copy_nh (struct bgpdump_pa_map_ *pa_map, uint8_t *filtered
   bgpdump_copy_pa(pa_map, NEXT_HOP, &fp);
   bgpdump_copy_pa(pa_map, AS_PATH, &fp);
   bgpdump_copy_pa(pa_map, MULTI_EXIT_DISC, &fp);
+  bgpdump_copy_pa(pa_map, LOCAL_PREF, &fp);
   bgpdump_copy_pa(pa_map, ATOMIC_AGGREGATE, &fp);
   bgpdump_copy_pa(pa_map, AGGREGATOR, &fp);
   bgpdump_copy_pa(pa_map, COMMUNITY, &fp);
@@ -954,6 +955,7 @@ bgpdump_filter_bgp_pa_trim_nh (struct bgpdump_pa_map_ *pa_map, uint8_t *filtered
   bgpdump_copy_pa(pa_map, NEXT_HOP, &fp);
   bgpdump_copy_pa(pa_map, AS_PATH, &fp);
   bgpdump_copy_pa(pa_map, MULTI_EXIT_DISC, &fp);
+  bgpdump_copy_pa(pa_map, LOCAL_PREF, &fp);
   bgpdump_copy_pa(pa_map, ATOMIC_AGGREGATE, &fp);
   bgpdump_copy_pa(pa_map, AGGREGATOR, &fp);
   bgpdump_copy_pa(pa_map, COMMUNITY, &fp);
