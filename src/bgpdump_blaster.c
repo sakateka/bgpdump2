@@ -1077,6 +1077,21 @@ bgpdump_close_session_cb (struct timer_ *timer)
     session->read_buf_end = session->read_buf;
 
     /*
+     * Reset statistics.
+     */
+    memset(&session->stats, 0, sizeof(session->stats));
+
+    /*
+     * Reset ribwalk cursor.
+     */
+    session->ribwalk_pnode = NULL;
+    session->ribwalk_peer_index = 0;
+    session->ribwalk_prefix_index = 0;
+    session->ribwalk_complete = false;
+    session->ribwalk_withdraw = false;
+    memset(&session->eor_ts, 0, sizeof(session->eor_ts));
+
+    /*
      * Try to re-establish in 5s.
      */
     timer_add(&timer_root, &session->connect_timer, "connect_retry",
@@ -1377,7 +1392,9 @@ void
 bgpdump_read_cb (struct timer_ *timer)
 {
     struct bgp_session_ *session;
-    uint space_left, res;
+    uint space_left;
+    ssize_t res;
+    char c;
 
     session = (struct bgp_session_ *)timer->data;
 
@@ -1385,6 +1402,19 @@ bgpdump_read_cb (struct timer_ *timer)
      * Start the read loop.
      */
     for (space_left = BGP_READBUFSIZE; space_left; ) {
+
+	/*
+	 * Check if peer is still alive.
+	 */
+	res = recv(session->sockfd, &c, 1, MSG_PEEK);
+	if (res == 0) {
+	    LOG(NORMAL, "Remote peer has closed the connection\n");
+
+	    /* restart session */
+	    timer_add(&timer_root, &session->close_timer, "restart_session",
+		      0, 0, session, &bgpdump_close_session_cb);
+	    return;
+	}
 
         space_left = (session->read_buf + BGP_READBUFSIZE) - session->read_buf_end;
 	res = read(session->sockfd, session->read_buf_end, space_left);
