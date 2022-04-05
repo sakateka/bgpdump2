@@ -83,5 +83,6 @@ void timer_walk(struct timer_root_ *);
 
 void timespec_add(struct timespec *, struct timespec *, struct timespec *);
 void timespec_sub(struct timespec *, struct timespec *, struct timespec *);
+char *timespec_format(struct timespec *);
 
 #endif /* __TIMER_H__ */

@@ -415,6 +415,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
     uint16_t filtered_path_length;
     uint8_t filtered_path[4096];
     struct bgpdump_pa_map_ pa_map;
+    struct timespec now, diff;
 
     session = (struct bgp_session_ *)timer->data;
 
@@ -423,10 +424,8 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
     }
 
     if (withdraw_delay && session->ribwalk_withdraw) {
-	struct timespec now, diff;
-
 	clock_gettime(CLOCK_MONOTONIC, &now);
-	timespec_sub(&diff, &now, &session->eor_ts);
+	timespec_sub(&diff, &now, &session->ribwalk_eor);
 
 	/* backoff if withdraw delay has not yet been reached */
 	if (diff.tv_sec < withdraw_delay) {
@@ -464,6 +463,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    peer_table[peer_index].ipv6_count,
 	    peer_table[peer_index].path_count);
 
+	clock_gettime(CLOCK_MONOTONIC, &session->ribwalk_start);
 	session->ribwalk_pnode = ptree_head(t);
 
 	/*
@@ -537,8 +537,9 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		    session->stats.prefixes_withdrawn,
 		    session->stats.octets_sent);
 
-		clock_gettime(CLOCK_MONOTONIC, &session->eor_ts);
-		LOG(NORMAL, "End-of-RIB\n");
+		clock_gettime(CLOCK_MONOTONIC, &session->ribwalk_eor);
+		timespec_sub(&diff, &session->ribwalk_eor, &session->ribwalk_start);
+		LOG(NORMAL, "End-of-RIB, walk time %s\n", timespec_format(&diff));
 
 		/*
 		 * Re-schedule.
@@ -1096,7 +1097,8 @@ bgpdump_close_session_cb (struct timer_ *timer)
     session->ribwalk_prefix_index = 0;
     session->ribwalk_complete = false;
     session->ribwalk_withdraw = false;
-    memset(&session->eor_ts, 0, sizeof(session->eor_ts));
+    memset(&session->ribwalk_start, 0, sizeof(session->ribwalk_start));
+    memset(&session->ribwalk_eor, 0, sizeof(session->ribwalk_eor));
 
     /*
      * Try to re-establish in 5s.

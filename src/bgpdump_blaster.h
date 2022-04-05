@@ -73,7 +73,8 @@ struct bgp_session_
     int ribwalk_prefix_index;
     struct bgp_prefix_ *ribwalk_prefix;
     uint ribwalk_complete:1, ribwalk_withdraw:1;
-    struct timespec eor_ts; /* Timestamp when end of RIB was sent */
+    struct timespec ribwalk_start; /* Timestamp when RIB walk was started */
+    struct timespec ribwalk_eor; /* Timestamp when end of RIB was sent */
 
     /*
      * Statistics.
