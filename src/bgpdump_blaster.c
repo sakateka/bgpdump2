@@ -545,10 +545,10 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		 */
 		if (session->ribwalk_complete) {
 		    timer_add(&timer_root, &session->write_job, "write_job",
-			      0, 20 * MSEC, session, bgpdump_drain_cb);
+			      0, 10 * MSEC, session, bgpdump_drain_cb);
 		} else {
 		    timer_add(&timer_root, &session->write_job, "write_job",
-			      0, 20 * MSEC, session, bgpdump_ribwalk_cb);
+			      0, 10 * MSEC, session, bgpdump_ribwalk_cb);
 		}
 		return;
 	    }
@@ -836,7 +836,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
      * Reschedule.
      */
     timer_add(&timer_root, &session->write_job, "write_job",
-	      0, 20 * MSEC, session, bgpdump_ribwalk_cb);
+	      0, 10 * MSEC, session, bgpdump_ribwalk_cb);
 }
 
 /*
@@ -1369,7 +1369,7 @@ bgpdump_read (struct bgp_session_ *session)
 	     * Start the walk job.
 	     */
 	    timer_add_periodic(&timer_root, &session->write_job, "write_job",
-			       0, 20 * MSEC, session, bgpdump_ribwalk_cb);
+			       0, 10 * MSEC, session, bgpdump_ribwalk_cb);
 	    break;
 
 	case BGP_MSG_UPDATE:
@@ -1523,7 +1523,7 @@ bgpdump_blaster (void)
 	 * In case of blaster_dump option we'll just dump the BGP stream into a file.
 	 */
 	timer_add_periodic(&timer_root, &session->write_job, "write_job",
-			   0, 20 * MSEC, session, bgpdump_ribwalk_cb);
+			   0, 10 * MSEC, session, bgpdump_ribwalk_cb);
 
     } else {
 
