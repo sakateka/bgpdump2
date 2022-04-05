@@ -71,6 +71,7 @@ struct bgp_session_
     struct ptree_node *ribwalk_pnode;
     int ribwalk_peer_index;
     int ribwalk_prefix_index;
+    struct bgp_prefix_ *ribwalk_prefix;
     uint ribwalk_complete:1, ribwalk_withdraw:1;
     struct timespec eor_ts; /* Timestamp when end of RIB was sent */
 

@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.63])
-AC_INIT([bgpdump2], [2.0.11], [hannes@rtbrick.com])
+AC_INIT([bgpdump2], [2.0.12], [hannes@rtbrick.com])
 AM_INIT_AUTOMAKE()
 AC_CONFIG_SRCDIR([src/bgpdump.c])
 AC_CONFIG_HEADERS([config.h])

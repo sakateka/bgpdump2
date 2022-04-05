@@ -375,6 +375,30 @@ bgpdump_open_blaster_dump_file (struct bgp_session_ *session, uint16_t peer_inde
     }
 }
 
+struct bgp_prefix_ *
+bgpdump_getnext_prefix(struct bgp_session_ *session, struct bgp_path_ *bgp_path)
+{
+    struct bgp_prefix_ *prefix, *first_prefix;
+
+    first_prefix = CIRCLEQ_FIRST(&bgp_path->path_qhead);
+
+    if (!session->ribwalk_prefix) {
+	session->ribwalk_prefix = first_prefix;
+	session->ribwalk_prefix_index = 1;
+	return first_prefix;
+    } else {
+	prefix = CIRCLEQ_LOOP_NEXT(&bgp_path->path_qhead, session->ribwalk_prefix, prefix_qnode);
+	if (prefix == first_prefix) {
+	    return NULL;
+	}
+    }
+
+    session->ribwalk_prefix = prefix;
+    session->ribwalk_prefix_index++;
+
+    return prefix;
+}
+
 void
 bgpdump_ribwalk_cb (struct timer_ *timer)
 {
@@ -427,6 +451,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		return;
 	    }
 	    session->ribwalk_pnode = NULL;
+	    session->ribwalk_prefix = NULL;
 	    session->ribwalk_prefix_index = 0;
 
 	    return;
@@ -472,6 +497,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	    /* All routes for this path have been encoded, progress to next path. */
 	    session->ribwalk_pnode = ptree_next(session->ribwalk_pnode);
 	    session->ribwalk_prefix_index = 0;
+	    session->ribwalk_prefix = NULL;
 
 	    /*
 	     * Is this the end of this RIB ?
@@ -605,12 +631,7 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 	if (bgp_path->af == AF_INET && bgp_path->safi == 1) {
 
 	    /* ipv4 unicast */
-	    CIRCLEQ_FOREACH(prefix, &bgp_path->path_qhead, prefix_qnode) {
-		if (session->ribwalk_prefix_index &&
-		    (prefix_index < session->ribwalk_prefix_index)) {
-		    prefix_index++;
-		    continue;
-		}
+	    while ((prefix = bgpdump_getnext_prefix(session, bgp_path))) {
 		bgpdump_push_prefix(session, bgp_path, prefix);
 		prefix_index++;
 
@@ -650,12 +671,8 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		push_be_uint(session, 1, 0); /* SNPA / reserved */
 	    }
 
-	    CIRCLEQ_FOREACH(prefix, &bgp_path->path_qhead, prefix_qnode) {
-		if (session->ribwalk_prefix_index &&
-		    (prefix_index < session->ribwalk_prefix_index)) {
-		    prefix_index++;
-		    continue;
-		}
+	    /* ipv6 unicast */
+	    while ((prefix = bgpdump_getnext_prefix(session, bgp_path))) {
 		bgpdump_push_prefix(session, bgp_path, prefix);
 		prefix_index++;
 
@@ -706,12 +723,8 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		push_be_uint(session, 1, 0); /* SNPA / reserved */
 	    }
 
-	    CIRCLEQ_FOREACH(prefix, &bgp_path->path_qhead, prefix_qnode) {
-		if (session->ribwalk_prefix_index &&
-		    (prefix_index < session->ribwalk_prefix_index)) {
-		    prefix_index++;
-		    continue;
-		}
+	    /* ipv6 labeled unicast */
+	    while ((prefix = bgpdump_getnext_prefix(session, bgp_path))) {
 		bgpdump_push_prefix(session, bgp_path, prefix);
 		prefix_index++;
 
@@ -762,12 +775,8 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		push_be_uint(session, 1, 0); /* SNPA / reserved */
 	    }
 
-	    CIRCLEQ_FOREACH(prefix, &bgp_path->path_qhead, prefix_qnode) {
-		if (session->ribwalk_prefix_index &&
-		    (prefix_index < session->ribwalk_prefix_index)) {
-		    prefix_index++;
-		    continue;
-		}
+	    /* ipv4 labeled unicast */
+	    while ((prefix = bgpdump_getnext_prefix(session, bgp_path))) {
 		bgpdump_push_prefix(session, bgp_path, prefix);
 		prefix_index++;
 
@@ -791,8 +800,6 @@ bgpdump_ribwalk_cb (struct timer_ *timer)
 		write_be_uint(session->write_buf+tpa_length_idx, 2, filtered_path_length + length + 4);
 	    }
 	}
-
-	session->ribwalk_prefix_index = prefix_index; /* Update cursor */
 
 	if (session->ribwalk_withdraw && bgp_path->af == AF_INET && bgp_path->safi == 1)  {
 
