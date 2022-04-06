@@ -129,7 +129,7 @@ trap 'custom_trap_debug "$?" "$BASH_COMMAND" "$LINENO" "${BASH_SOURCE[0]}"' ERR;
 # discovered and set in jenkins_shell_functions.
 _git="$_git";
 _jq="$_jq";
-_rtb_itool="$(which rtb-itool)";
+_rtb_itool="${_rtb_itool:-$(command -v rtb-itool-jenkins || command -v rtb-itool)}";
 _sha256sum="$_sha256sum";
 
 # Prefer podman over docker if available.
@@ -137,19 +137,29 @@ _docker="$(which podman)" || _docker="$(which docker)";	export _docker;
 _docker_exec="$_docker exec -t";			export _docker_exec;
 
 # Global variables.
+
 # DEFAULT_BUILD_SCRIPT is the script used when a build step (inside of a
 # container does not have a specific value for build_script.
 DEFAULT_BUILD_SCRIPT="${__jenkins_scripts_dir:-./.jenkins}/jenkins_build.sh";
 DEFAULT_PKG_SCRIPT="${__jenkins_scripts_dir:-./.jenkins}/jenkins_package.sh";
+DEFAULT_UPLOAD_SCRIPT="${__jenkins_scripts_dir:-./.jenkins}/jenkins_upload_internal.sh";
+DEFAULT_SONAR_SCRIPT="${__jenkins_scripts_dir:-./.jenkins}/jenkins_sonarqube.sh";
 #
 # DEFAULT_STEP_CONT defines the default container name in which steps like
 # package, test, upload will run if a specific container for them is not
 # defined in build_conf through a variable like `pkg_cont`.
 DEFAULT_STEP_CONT="builder";
+# SONAR_SCAN_CONT is the container inside which the sonar-scanner will be run,
+# IF the current build config asks for SonarQube analysis (by having a `sonar`
+# section) AND IF this container exists. IF this container DOESN'T exist but
+# the build config asks for SonarQube analysis then sonar-scanner will be run
+# inside of DEFAULT_STEP_CONT.
+SONAR_SCAN_CONT="sonar";
 #
 # RTB_ITOOL_CONFIG is the location of the rtb-itool configuration file. It is
 # used to load the GITLAB_TOKEN in the environment if needed.
 RTB_ITOOL_CONFIG="$HOME/.config/rtb-itool/config.yml";
+
 # build_conf is the JSON file describing the build. It has a default value but
 # it can also be provided via the -C CLI option.
 build_conf="${__jenkins_scripts_dir:-./.jenkins}/jenkins_build_conf.json";
@@ -255,7 +265,7 @@ done
 	echo "---------------------------------------------------------------";
 	env;
 	echo "---------------------------------------------------------------";
-}
+} >&2;
 [ "${__global_debug:-0}" -gt "1" ] && {
 	set -x;
 	# functrace is bash specific.
@@ -335,6 +345,8 @@ get_conf_key "$build_name" 1>/dev/null || {
 			;;
 		upload)
 			;;
+		sonar)
+			;;
 		*)
 			>&2 echo "'$highlevel_step' is not a valid option for the high level build step.";
 			>&2 print_usage "$@";
@@ -406,7 +418,7 @@ if [ "${gitlabActionType:-}" == "MERGE" ]; then
 		die "Some of the expected gitlab variables are not set !";
 	fi
 
-	logmsg "Build triggered by gitlab merge request !${gitlabMergeRequestIid}: ${gitlabSourceRepoName}:${gitlabSourceBranch} => ${gitlabTargetRepoName}:${gitlabTargetBranch}";
+	logmsg "Build triggered by gitlab merge request !${gitlabMergeRequestIid}: ${gitlabSourceRepoName}:${gitlabSourceBranch} => ${gitlabTargetRepoName}:${gitlabTargetBranch}" "$ME";
 
 	# It seems that Jenkins will checkout the master branch even for a
 	# merge request triggered build, so we need to checkout the source
@@ -422,7 +434,11 @@ if [ "${gitlabActionType:-}" == "MERGE" ]; then
 			| sed -E 's/^[[:space:]]*\*[[:space:]]*//g')";
 	GIT_COMMIT="$($_git rev-parse HEAD)";
 
-	[ "_$BRANCH" == "_$gitlabSourceBranch" ] || die "Can't switch to branch: $gitlabSourceBranch";
+	[ "_$BRANCH" == "_$gitlabSourceBranch" ] || {
+		detachedHeadRE="\(HEAD detached at $(echo "$gitlabMergeRequestLastCommit" | cut -c 1-6)[0-9a-f]*\)";
+		regex "_$BRANCH" "_$detachedHeadRE" || die "Can't switch to branch: $gitlabSourceBranch";
+		warnmsg "Git status: $BRANCH" "$ME";
+	}
 	[ "_$GIT_COMMIT" == "_$gitlabMergeRequestLastCommit" ] || die "Latest commit doesn't match: $GIT_COMMIT != $gitlabMergeRequestLastCommit";
 
 	export BRANCH;
@@ -538,6 +554,24 @@ fi
 build_job_hash="$(echo "$proj $build_name $ver_str" | $_sha256sum | cut -c '1-12')";
 logmsg "Running for project: ${proj}; build_name: ${build_name}; version: ${ver_str}; build_job_hash: ${build_job_hash}" "$ME";
 
+# Identify the apt resolv log file and start with an empty one (to avoid
+# re-use of old data from previous builds).
+apt_resolv_script="jenkins_resolve_apt_dep.sh";
+apt_resolv_log="apt_resolv.log";
+
+if [ -x "./$apt_resolv_script" ]; then
+	apt_resolv_script="./$apt_resolv_script";
+else
+	if [ -x "${__jenkins_scripts_dir:-./.jenkins}/$apt_resolv_script" ]; then
+		apt_resolv_script="${__jenkins_scripts_dir:-./.jenkins}/$apt_resolv_script";
+	fi
+fi
+[ -d "${__jenkins_scripts_dir:-./.jenkins}" ]	\
+	&& apt_resolv_log="${__jenkins_scripts_dir:-./.jenkins}/${apt_resolv_log}";
+
+apt_resolv_log_per_cont="${apt_resolv_log}.${DEFAULT_STEP_CONT}";
+echo -n > "$apt_resolv_log_per_cont";
+
 # rtb-itool needs a valid GITLAB_TOKEN to be able to do repository read operations
 # against gitlab.rtbrick.net . In the case of a Jenkins build a valid token should
 # have been injected into the environment. But in the case of a local build we
@@ -547,35 +581,66 @@ logmsg "Running for project: ${proj}; build_name: ${build_name}; version: ${ver_
 [ -z "${GITLAB_TOKEN:-}" ] && {
 	source_gitlab_token "$RTB_ITOOL_CONFIG" || {
 		errmsg "Can't load GITLAB_TOKEN from '$RTB_ITOOL_CONFIG'" "$ME";
-		>&2 echo "jenkins.sh now dependens on rtb-itool and in turn rtb-itool depends";
-		>&2 echo "on having a valid repository read GITLAB_TOKEN for gitlab.rtbrick.net";
-		>&2 echo "please consult the rtb-itool help on how to setup your Gitlab auth !";
+		echo "jenkins.sh now dependens on rtb-itool and in turn rtb-itool depends";
+		echo "on having a valid repository read GITLAB_TOKEN for gitlab.rtbrick.net";
+		echo "please consult the rtb-itool help on how to setup your Gitlab auth !";
 		exit 3;
-	}
+	} >&2;
 }
 
-# Identify if current build creates a package.
+# Identify if the current build creates a package.
+source_etc_os_release;
+# Get distribution and release from the build conf or rely on host OS values.
+pkg_distribution="$(get_build_key_or_def "$build_name" "pkg_distribution" || echo "$OS_RELEASE_ID")";
+pkg_release="$(get_build_key_or_def "$build_name" "pkg_release" || echo "$OS_RELEASE_VERSION_CODENAME")";
+pkg_group="$(get_build_key_or_def "$build_name" "pkg_group" || true)";
 pkg_name="$(get_build_key_or_def "$build_name" "pkg_name" || true)";
-[ -n "$pkg_name" ] && [ -z "$local_build" ] && {
-	pkg_group="$(get_build_key_or_def "$build_name" "pkg_group")";
-	source_etc_os_release;
-	# Get distribution and release from the build conf or rely on host OS values.
-	pkg_distribution="$(get_build_key_or_def "$build_name" "pkg_distribution" || echo "$OS_RELEASE_ID")";
-	pkg_release="$(get_build_key_or_def "$build_name" "pkg_release" || echo "$OS_RELEASE_VERSION_CODENAME")";
+[ -n "$pkg_name" ] && {
+	containers="$(get_build_key_or_def "$build_name" "containers")";
+	cont_conf="$(get_cont_by_name "$containers" "$DEFAULT_STEP_CONT")";
+	cont_deps_with_dev="$(get_dict_key "$cont_conf" "compile_deps_with_dev" || true)";
+	[ "_$cont_deps_with_dev" == "_true" ] && apt_resolv_script="$apt_resolv_script --with-dev";
+	cont_deps="$(get_dict_key "$cont_conf" "compile_deps" || true)";
+	[ -z "$cont_deps" ] && cont_deps="[]";
+	cont_deps_len="$(echo "$cont_deps" | $_jq -c '. | values | length')";
+	if [ "$cont_deps_len" -gt "0" ]; then
+		deps_resolved="$(/usr/bin/env						\
+			"DEBIAN_FRONTEND=noninteractive"				\
+			"GITLAB_TOKEN=${GITLAB_TOKEN:-}"				\
+			"BRANCH=$BRANCH"						\
+			"__global_debug=$__global_debug"				\
+			"__jenkins_scripts_dir=${__jenkins_scripts_dir:-./.jenkins}"	\
+			"_rtb_itool=$_rtb_itool"					\
+			"pkg_name=$pkg_name"						\
+			"pkg_group=$pkg_group"						\
+			"pkg_distribution=$pkg_distribution"				\
+			"pkg_release=$pkg_release"					\
+			$apt_resolv_script "$cont_deps")";
 
-	existing_pkg="$($_rtb_itool pkg needbuild --log-level=info	\
-				--as-deb-dep				\
-				--branch="$BRANCH"			\
-				--pkg-distribution="$pkg_distribution"	\
-				--pkg-release="$pkg_release"		\
-				--pkg-group="$pkg_group"		\
+		echo "$deps_resolved" > "$apt_resolv_log_per_cont";
+		[ "${__global_debug:-0}" -gt "0" ] && {
+			logmsg "Package compile time dependencies resolved: $apt_resolv_log_per_cont:" "$ME";
+			cat "$apt_resolv_log_per_cont";
+		}
+	fi
+
+	logmsg "Checking if the package needs a re-build (pkg needbuild) ..." "$ME";
+	existing_pkg="$($_rtb_itool pkg needbuild				\
+				--component="$pkg_group"			\
+				--branch="$BRANCH"				\
+				--distribution="$pkg_distribution"		\
+				--release="$pkg_release"			\
+				--dependencies "$apt_resolv_log_per_cont"	\
+				--as-deb-dep					\
 				"$pkg_name")" && {
 
-		existing_version="$(echo "$existing_pkg" | awk -F '=' '{print $2;}')";
-		[ -z "$local_build" ] && echo "$existing_version" > ".jenkins_build_version.txt";
+		logmsg "Existing package: $existing_pkg" "$ME";
+
+		existing_version="$(echo "$existing_pkg" | grep -E -m 1 "^${pkg_name}=" | awk -F '=' '{print $2;}')";
 
 		if [ "$rebuild_force" -eq "0" ]; then
-			logmsg "Finished successfully by using previous package: $existing_pkg ." "$ME";
+			[ -z "$local_build" ] && echo "$existing_version" > ".jenkins_build_version.txt";
+			logmsg "Finished successfully by using previous package: $existing_version ." "$ME";
 
 			prom_set "need_build" "0";
 			prom_set "end_time_job" "$(date '+%s')";
@@ -585,14 +650,14 @@ pkg_name="$(get_build_key_or_def "$build_name" "pkg_name" || true)";
 			logmsg "Prometheus metrics pushed" "$ME";
 			exit 0;
 		else
-			logmsg "Ignoring previous package: $existing_pkg due to rebuild_force=1 ." "$ME";
+			logmsg "Ignoring previous package: $existing_version due to rebuild_force=1 ." "$ME";
 		fi
 	}
 
 	logmsg "No previous package found or outdated previous package" "$ME";
 }
 
-# Prepare the build envoironment which can be composed of one or more docker
+# Prepare the build environment which can be composed of one or more docker
 # containers.
 logmsg "Launching docker container(s) for this build ..." "$ME";
 prom_add_duration "duration_prepare" "Duration of the prepare step in seconds." "step=\"prepare\"" "";
@@ -610,6 +675,14 @@ if [ -n "$highlevel_step" ] && [ "_$highlevel_step" != "_build" ]; then
 	skip_build_steps="1";
 	logmsg "Skipping all build steps due to high level step being '$highlevel_step'" "$ME";
 fi
+
+# Get SonarQube configuration variables. We `get` them here and not later 
+# (right before the SonarQube step) as in the `lang == c` case when the 
+# compilation commands need to be prefixed with the SonarQube wrapper script.
+sonar_conf="$(get_build_key_or_def "$build_name" "sonar" || true)";
+sonar_token="${SONARQUBE_TOKEN:-}";
+sonar_script="$(get_build_key_or_def "$build_name" "sonar_script" || true)";
+[ -z "$sonar_script" ] && sonar_script="$DEFAULT_SONAR_SCRIPT";
 
 i="0";
 while [ "$i" -lt "$build_steps_len" ] && [ "$skip_build_steps" -eq "0" ]; do
@@ -671,6 +744,7 @@ while [ "$i" -lt "$build_steps_len" ] && [ "$skip_build_steps" -eq "0" ]; do
 			-e "GIT_COMMIT=$GIT_COMMIT"			\
 			-e "GIT_COMMIT_TS=$GIT_COMMIT_TS"		\
 			-e "GIT_COMMIT_DATE=$GIT_COMMIT_DATE"		\
+			-e "sonar_conf=$sonar_conf"			\
 			"$dckr_name"					\
 			/bin/sh -c -- "$build_script";
 	else
@@ -737,6 +811,8 @@ for pkg_suffix in "" "dev" "dbg"; do
 				-e "pkg_name=$pkg_name"				\
 				-e "pkg_suffix=$pkg_suffix"			\
 				-e "pkg_descr=$pkg_descr"			\
+				-e "pkg_distribution=$pkg_distribution"		\
+				-e "pkg_release=$pkg_release"			\
 				-e "pkg_group=$pkg_group"			\
 				-e "pkg_provides=$pkg_provides"			\
 				-e "pkg_conflicts=$pkg_conflicts"		\
@@ -804,7 +880,19 @@ prom_update_duration "duration_test";
 
 prom_add_duration "duration_upload" "Duration of the upload step in seconds." "step=\"upload\"" "";
 # Get upload configuration variables.
-upload_script="$(get_build_key_or_def "$build_name" "upload_script" || true)";
+upload_script="$(get_build_key_or_def "$build_name" "upload_script" || echo '__DEFAULT_UPLOAD_SCRIPT__')";
+case "__$upload_script" in
+	'__')
+		;;
+	__no|__No|__NO|__none|__None|__NONE|__null|__Null|__NULL|__false|__False|__FALSE)
+		upload_script='';
+		;;
+	'____DEFAULT_UPLOAD_SCRIPT__')
+		upload_script="$DEFAULT_UPLOAD_SCRIPT";
+		;;
+	*)
+		;;
+esac
 upload_cont="$(get_build_key_or_def "$build_name" "upload_cont" || true)";
 [ -z "$upload_cont" ] && upload_cont="$DEFAULT_STEP_CONT";
 
@@ -821,14 +909,29 @@ if [ -n "$upload_script" ]; then
 			$_docker_exec					\
 				-e "build_name=$build_name"		\
 				-e "build_conf=$build_conf"		\
+				-e "dckr_name=$dckr_name"		\
 				-e "local_build=$local_build"		\
 				-e "proj=$proj"				\
 				-e "build_ts=$build_ts"			\
 				-e "build_date=$build_date"		\
 				-e "build_job_hash=$build_job_hash"	\
+				-e "pkg_name=$pkg_name"			\
+				-e "pkg_suffix=$pkg_suffix"		\
+				-e "pkg_descr=$pkg_descr"		\
+				-e "pkg_distribution=$pkg_distribution"	\
+				-e "pkg_release=$pkg_release"		\
+				-e "pkg_group=$pkg_group"		\
+				-e "pkg_provides=$pkg_provides"		\
+				-e "pkg_conflicts=$pkg_conflicts"	\
+				-e "pkg_deps=$pkg_deps"			\
+				-e "pkg_deps_exact=$pkg_deps_exact"	\
+				-e "pkg_services=$pkg_services"		\
+				-e "pkg_sw_ver_skip=$pkg_sw_ver_skip"	\
+				-e "pkg_commands=$pkg_commands"		\
 				-e "ver_mmr=$ver_mmr"			\
 				-e "ver_str=$ver_str"			\
 				-e "__global_debug=$__global_debug"	\
+				-e "_rtb_itool=$_rtb_itool"		\
 				-e "GITLAB_TOKEN=$GITLAB_TOKEN"		\
 				-e "BRANCH=$BRANCH"			\
 				-e "GIT_COMMIT=$GIT_COMMIT"		\
@@ -844,6 +947,63 @@ else
 	logmsg "upload_script is empty, skipping upload step" "$ME";
 fi
 prom_update_duration "duration_upload";
+
+prom_add_duration "duration_sonarqube" "Duration of the SonarQube step in seconds." "step=\"sonarqube\"" "";
+# Run the SonarQube step. The sonar script will be run inside of a container named $SONAR_SCAN_CONT
+# if such a container exists (hence is part of the configuration) or inside the DEFAULT_STEP_CONT
+# which is usually the `builder` container.
+if [ -n "$sonar_conf" ] && [ "$sonar_conf" != "{}" ]; then
+	if [ -z "$highlevel_step" ] || [ "_$highlevel_step" == "_sonar" ]; then
+		if [ -n "$sonar_token" ]; then
+			sonar_scan_cont_name="${dckr_name:-}";
+			try_sonar_cont_name="$(echo "${build_job_hash}_${proj}_${SONAR_SCAN_CONT}"	\
+						| sed -E "s/$DOCKER_SANITIZER/_/g")";
+			$_docker inspect "$try_sonar_cont_name" 1>/dev/null 2>/dev/null &&		\
+				sonar_scan_cont_name="$try_sonar_cont_name";
+
+			# If sonar_scan_cont_name is empty we might be running just the `sonar` high
+			# level step and at the same time not have a specific sonar container.
+			[ -z "$sonar_scan_cont_name" ] && {
+				sonar_scan_cont_name="$(echo "${build_job_hash}_${proj}_${DEFAULT_STEP_CONT}"	\
+						| sed -E "s/$DOCKER_SANITIZER/_/g")";
+			}
+
+			logmsg "Running SonarQube step inside container '$sonar_scan_cont_name'" "$ME";
+			$_docker_exec							\
+				-e "build_name=$build_name"				\
+				-e "build_conf=$build_conf"				\
+				-e "dckr_name=$sonar_scan_cont_name"			\
+				-e "local_build=$local_build"				\
+				-e "proj=$proj"						\
+				-e "build_ts=$build_ts"					\
+				-e "build_date=$build_date"				\
+				-e "build_job_hash=$build_job_hash"			\
+				-e "ver_mmr=$ver_mmr"					\
+				-e "ver_str=$ver_str"					\
+				-e "__global_debug=$__global_debug"			\
+				-e "BRANCH=$BRANCH"					\
+				-e "SONARQUBE_TOKEN=$SONARQUBE_TOKEN"			\
+				-e "GIT_COMMIT=$GIT_COMMIT"				\
+				-e "GIT_COMMIT_TS=$GIT_COMMIT_TS"			\
+				-e "GIT_COMMIT_DATE=$GIT_COMMIT_DATE"			\
+				-e "sonar_conf=$sonar_conf"				\
+				-e "sonar_version=$_short_commit"			\
+				-e "gitlabActionType=${gitlabActionType:-}"		\
+				-e "gitlabMergeRequestIid=${gitlabMergeRequestIid:-}"	\
+				-e "gitlabSourceBranch=${gitlabSourceBranch:-}"		\
+				-e "gitlabTargetBranch=${gitlabTargetBranch:-}"		\
+				"$sonar_scan_cont_name"					\
+				/bin/sh -c -- "$sonar_script";
+		else
+			warnmsg "SONARQUBE_TOKEN is not set, skipping SonarQube high level step" "$ME";
+		fi
+	else
+		logmsg "Skipping SonarQube high level step" "$ME";
+	fi
+else
+	logmsg "SonarQube config is is empty, skipping SonarQube step" "$ME";
+fi
+prom_update_duration "duration_sonarqube";
 
 [ "${keep_containers:-0}" -ne "1" ] && {
 	prom_add_duration "duration_cleanup" "Duration of the cleanup step in seconds." "step=\"cleanup\"" "";

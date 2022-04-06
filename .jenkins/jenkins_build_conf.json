@@ -44,6 +44,6 @@
       "libzstd1"
     ],
     "pkg_services": [],
-    "upload_script": ".jenkins/jenkins_upload_to_latest_ubuntu_rtbrick-internal_bionic_rtbrick-internal.sh"
+    "upload_script": ".jenkins/jenkins_upload_internal.sh"
   }
 }

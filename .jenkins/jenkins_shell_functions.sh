@@ -31,6 +31,13 @@ trap 'trap_debug "$?" "$BASH_COMMAND" "$LINENO" "${BASH_SOURCE[0]}"' ERR;
 
 # Global definitions.
 
+# DEFAULT_STEP_CONT defines the default container name in which steps like
+# package, test, upload will run if a specific container for them is not
+# defined in build_conf through a variable like `pkg_cont`. This variable is
+# used in both jenkins.sh and jenkins_package.sh .
+# shellcheck disable=SC2034
+DEFAULT_STEP_CONT="builder";
+
 # SEMVER_MATCH is a regexp that can match a SEMVER 2.0 version string and that
 # can be used with capture groups to extract each piece of information:
 #     \1 -> major
@@ -72,10 +79,17 @@ GITLAB_URL="git@gitlab.rtbrick.net";
 #     \5 -> destination directory (if different than repo_name)
 GITLAB_REF="([^@>]+)(@([^>]+))?(>(.+))?";
 
-# Setting for the RtBrick internal docker registry.
-DOCKER_RTB_REGISTRY_URL="docker.rtbrick.net";
-DOCKER_RTB_USERNAME="jenkins-build-scripts";
-DOCKER_RTB_TOKEN="Tz3jMdCUMYb1WV-roSc6"; # Valid until 2020-12-31.
+# Setting for the RtBrick internal docker registry. Use environment variables
+# or hard-coded values.
+DOCKER_RTB_REGISTRY_URL="${DOCKER_RTB_REGISTRY_URL:-docker.rtbrick.net}";
+DOCKER_RTB_USERNAME="${DOCKER_RTB_USERNAME:-jenkins-build-scripts}";
+DOCKER_RTB_TOKEN="${DOCKER_RTB_TOKEN:-Tz3jMdCUMYb1WV-roSc6}";
+
+# DOCKER_IMAGE_TAG_MATCH is a regexp that will match a (docker) container image
+# string if it also contains a tag. Valid characters for a tag are described
+# here: https://docs.docker.com/engine/reference/commandline/tag/#extended-description
+# The first capture group will contain the tag value.
+DOCKER_IMAGE_TAG_MATCH="^.*:([a-zA-Z0-9_.-]+)$"
 
 # DOCKER_SANITIZER is used for ensure that docker names (for networks &
 # containers) don't contain any illegal characters.
@@ -176,13 +190,20 @@ errmsg() {
 	printf "$header %s\n" "$msg";
 }
 
+# regex is copied from https://github.com/dylanaraps/pure-bash-bible#use-regex-on-a-string .
+# Usage: regex "string" "regex"
+regex() {
+	# We usually run with `-set u` and the pattern might not contain a 
+	# capture group.
+	[[ $1 =~ $2 ]] && printf '%s' "${BASH_REMATCH[1]:-}";
+}
+
 # timestamp_format takes a unixtimestamp numeric value and converts it to a
 # date string representation according to the strftime(3) rules. Should be
 # executed in a sub-shell:
 #
 #     val="$(timestamp_format "419846400")";
 #
-
 timestamp_format() {
 	local ts="$1";
 	local fmt="${2:-}";
@@ -298,6 +319,38 @@ get_arr_idx() {
 
 	echo "$val";
 	return 0;
+}
+
+# get_cont_by_name will print the container config from a build config
+# containers array if a specific container exists with the wanted name.
+# Should be executed in a sub-shell, like so:
+#
+#     val="$(get_cont_by_name "[{"name": "first_cont", ... }, {...}]" "second_cont")"
+#
+get_cont_by_name() {
+	set -ue;
+
+	local conts="$1";
+	local conts_len="$(echo "$conts" | $_jq -c '. | values | length')";
+	local want="$2";
+	local cont_conf=""; 
+	local cont_name="";
+
+	local i="0";
+	while [ "$i" -lt "$conts_len" ]; do
+		cont_conf="$(echo "$conts" | $_jq -c ". | values | .[$i]"	\
+			| grep -Eiv '^[[:blank:]]*null[[:blank:]]*$')";
+		cont_name="$(get_dict_key "$cont_conf" "name")";
+
+		[ "_$cont_name" == "_$want" ] && {
+			printf "%s" "$cont_conf";
+			return 0;
+		}
+
+		i="$(( i + 1 ))";
+	done
+
+	return 1;
 }
 
 # apt_pkg_match returns the string required to install a package via
@@ -997,9 +1050,14 @@ docker_prepare() {
 		}
 
 		# Check if the container image name points to our internal
-		# registry.
+		# registry. If it points to our internal registry we can also
+		# try the `current branch`-->`image tag` auto-magic. This will
+		# only be tried if the image specified in the config DOES NOT
+		# contain a tag. If it DOES NOT contain a tag then we will
+		# first try `image:current_branch` and if that image does not
+		# exist then try `image:latest`.
 		# shellcheck disable=SC2034
-		dckr_rtb_reg="$(echo "$cont_image" | grep -E "^$DOCKER_RTB_REGISTRY_URL")" && {
+		dckr_rtb_reg="$(regex "$cont_image" "^$DOCKER_RTB_REGISTRY_URL")" && {
 			# Check if we are already logged in.
 			# shellcheck disable=SC2034
 			dckr_rtb_reg="$($_jq '.auths | keys[]' < "$HOME/.docker/config.json" | grep -E "^$DOCKER_RTB_REGISTRY_URL")" || {
@@ -1010,9 +1068,19 @@ docker_prepare() {
 
 			# If this is an internal registry image always try to update it
 			# before a build. For external images we only try to download it
-			# if the image doesn't already exist. Although for RBFS builds we
-			# we must only use images on the internal docker registry.
-			$_docker pull "$cont_image";
+			# if the image doesn't already exist locally. Although for RBFS
+			# builds we we must only use images on the internal docker registry.
+			local image_tag="";
+			image_tag="$(regex "$cont_image" "$DOCKER_IMAGE_TAG_MATCH")" || {
+				# Image string doesn't contain a tag so we first try
+				# the `current branch`-->`image tag` auto-magic.
+				if $_docker pull "$cont_image:$BRANCH_SANITIZED"; then
+					cont_image="$cont_image:$BRANCH_SANITIZED";
+				else
+					$_docker pull "$cont_image:latest";
+					cont_image="$cont_image:latest";
+				fi
+			};
 		}
 
 		cont_image_info="$($_docker image inspect "$cont_image")" || {
@@ -1131,7 +1199,7 @@ docker_prepare() {
 		cont_status="$(echo "$cont_info" | $_jq ".[0].State.Status"	\
 			| grep -Eiv '^[[:blank:]]*null[[:blank:]]*$')";
 		if [ "_$cont_status" != "_running" ]; then
-			logmsg "Container $dckr_name is not running" "docker_prepare";
+			errmsg "Container $dckr_name is not running" "docker_prepare";
 			return 1;
 		fi
 
@@ -1157,10 +1225,14 @@ docker_prepare() {
 
 		local cont_deps="";
 		local cont_deps_len="";
+		local cont_deps_rtb_fake_inst="";
 
+		cont_deps_with_dev="$(get_dict_key "$cont_conf" "compile_deps_with_dev" || true)";
+		[ "_$cont_deps_with_dev" == "_true" ] && apt_resolv_script="$apt_resolv_script --with-dev";
 		cont_deps="$(get_dict_key "$cont_conf" "compile_deps" || true)";
 		[ -z "$cont_deps" ] && cont_deps="[]";
 		cont_deps_len="$(echo "$cont_deps" | $_jq -c '. | values | length')";
+		cont_deps_rtb_fake_inst="$(get_dict_key "$cont_conf" "compile_deps_rtb_fake_install" || true)";
 		if [ "$cont_deps_len" -gt "0" ]; then
 			logmsg "Installing dependencies in container '$dckr_name'" \
 				"docker_prepare";
@@ -1205,94 +1277,57 @@ docker_prepare() {
 			}
 
 			echo -n "" > "$apt_resolv_log";
-			declare -a deps_to_be_resolved=();
+			local apt_resolv_log_per_cont="${apt_resolv_log}.${cont_name}";
 			declare -a deps_to_be_installed=();
-			local j="0";
-			while [ "$j" -lt "$cont_deps_len" ]; do
-				local dep="";
-				dep="$(echo "$cont_deps" | $_jq ".[$j]")";
 
-				# Check if this is an rtbrick package dependency
-				# or not.
-				case "$dep" in
-					*:::rtbrick-*)
-						local pkg_group_override="";
-						pkg_group_override="$(echo "$dep" | sed -E 's/^([^:]+):::(.+)$/\1/g')";
-						dep="$(echo "$dep" | sed -E 's/^([^:]+):::(.+)$/\2/g')";
-
-						if [ -z "$pkg_group_override" ] || [ -z "$dep" ]; then
-							die "In pkg group override case: pkg_group_override='$pkg_group_override' dep='$dep'";
-						fi
-
-						local dep_resolved="";
-						dep_resolved="$($_docker exec						\
-							-e "DEBIAN_FRONTEND=noninteractive"				\
-							-e "GITLAB_TOKEN=${GITLAB_TOKEN:-}"				\
-							-e "BRANCH=$BRANCH"						\
-							-e "BRANCH_SANITIZED=$BRANCH_SANITIZED"				\
-							-e "__jenkins_scripts_dir=${__jenkins_scripts_dir:-./.jenkins}"	\
-							-e "pkg_name=$pkg_name"						\
-							-e "pkg_group=$pkg_group_override"				\
-							-e "pkg_distribution=$pkg_distribution"				\
-							-e "pkg_release=$pkg_release"					\
-							"$dckr_name"							\
-							$apt_resolv_script "--with-dev" "$dep")";
-
-						local d="";
-						for d in $dep_resolved; do
-							logmsg "rtbrick package dependency with pkg group override '$pkg_group_override' resolved to: [$d]"  "docker_prepare";
-							deps_to_be_installed+=("$d");
-							echo "$d" >> "$apt_resolv_log";
-						done
-					;;
-
-					rtbrick-*)
-						deps_to_be_resolved+=("$dep");
-					;;
-
-					*)
-						# We treat any non rtbrick- packages as passthrough and
-						# will try to install them later with the usual APT tooling.
-						# shellcheck disable=SC2206
-						deps_to_be_installed+=("$dep");
-						echo "$dep" >> "$apt_resolv_log";
-					;;
-				esac
-
-				j="$(( j + 1 ))";
-			done
-
-			# Resolving the exact dependency version needs to happen
-			# inside the respective container.
-			# NOTE: '$_docker exec' vs '$_docker_exec' is
-			# NOT a mistake here.
-			# shellcheck disable=SC2086
-			local deps_resolved="";
-			[ "${#deps_to_be_resolved[@]}" -gt "0" ] && {
+			if [ -f "$apt_resolv_log_per_cont" ]; then
+				# Re-use the contents of the per-container APT
+				# resolv log as it was probably already done
+				# in jenkins.sh .
+				local _d="";
+				local _comment="";
+				while read -r _d _comment; do
+					deps_to_be_installed+=("$_d");
+				done < "$apt_resolv_log_per_cont";
+			else
+				# Resolving the exact dependency version needs
+				# to happen inside the respective container.
+				# NOTE: '$_docker exec' vs '$_docker_exec' is
+				# NOT a mistake here.
+				# shellcheck disable=SC2086
+				local _rtb_itool_pass_if_set="_rtb_itool_not_set=true";
+				[ -n "${_rtb_itool:-}" ] && {
+					_rtb_itool_pass_if_set="_rtb_itool=$_rtb_itool";
+				}
+				local deps_resolved="";
 				deps_resolved="$($_docker exec						\
 					-e "DEBIAN_FRONTEND=noninteractive"				\
 					-e "GITLAB_TOKEN=${GITLAB_TOKEN:-}"				\
 					-e "BRANCH=$BRANCH"						\
 					-e "BRANCH_SANITIZED=$BRANCH_SANITIZED"				\
 					-e "__jenkins_scripts_dir=${__jenkins_scripts_dir:-./.jenkins}"	\
+					-e "$_rtb_itool_pass_if_set"					\
 					-e "pkg_name=$pkg_name"						\
 					-e "pkg_group=$pkg_group"					\
 					-e "pkg_distribution=$pkg_distribution"				\
 					-e "pkg_release=$pkg_release"					\
 					"$dckr_name"							\
-					$apt_resolv_script "--with-dev" "${deps_to_be_resolved[@]}")";
-			}
+					$apt_resolv_script "$cont_deps")";
 
-			local d="";
-			for d in $deps_resolved; do
-				logmsg "rtbrick package dependency resolved to: [$d]"  "docker_prepare";
-				deps_to_be_installed+=("$d");
-				echo "$d" >> "$apt_resolv_log";
-			done
+				local d="";
+				for d in $deps_resolved; do
+					deps_to_be_installed+=("$d");
+					echo "$d" >> "$apt_resolv_log_per_cont";
+				done
+			fi
 
+			local priv_apt_install_script="$apt_install_script";
+			[ "_$cont_deps_rtb_fake_inst" == "_true" ]	\
+				&& priv_apt_install_script="$apt_install_script --rtb-fake-install";
+			# shellcheck disable=SC2086
 			$_docker_exec -e "DEBIAN_FRONTEND=noninteractive"			\
 				"$dckr_name"							\
-				$apt_install_script "${deps_to_be_installed[@]}";
+				$priv_apt_install_script "${deps_to_be_installed[@]}";
 		fi
 
 		i="$(( i + 1 ))";

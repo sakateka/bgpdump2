@@ -31,7 +31,7 @@ trap 'trap_debug "$?" "$BASH_COMMAND" "$LINENO" "${BASH_SOURCE[0]}"' ERR;
 	echo "---------------------------------------------------------------";
 	env;
 	echo "---------------------------------------------------------------";
-}
+} >&2;
 [ "${__global_debug:-0}" -gt "1" ] && {
 	set -x;
 	# functrace is bash specific.
@@ -41,16 +41,13 @@ trap 'trap_debug "$?" "$BASH_COMMAND" "$LINENO" "${BASH_SOURCE[0]}"' ERR;
 # Dependencies on other programs which might not be installed. Here we rely on
 # values discovered and passed on by the calling script.
 # shellcheck disable=SC2269
-_jq="$_jq";
+_checkinstall="$(command -v checkinstall)";
+_dpkg="$(command -v dpkg)";
+_jq="${_jq:-$(command -v jq) -er}";
+_lsb_release="$(command -v lsb_release)";
+_uuidgen="$(command -v uuidgen)";
 
 ME="jenkins_package.sh";	# Useful for log messages.
-
-# Dependencies on other programs which might not be installed. If any of these
-# are missing the script will exit here with an error.
-_jq="$(which jq) -er";
-_checkinstall="$(which checkinstall)";
-_dpkg="$(which dpkg)";
-_lsb_release="$(which lsb_release)";
 
 # TODO: These are hard-coded values for now. Change them to be part of the
 # build conf JSON file.
@@ -69,6 +66,7 @@ _pkg_name="${pkg_name:-}"; [ -z "$_pkg_name" ] && die "Cannot build a package wi
 _pkg_suffix="${pkg_suffix:-}";
 _pkg_descr="${pkg_descr:-}"; [ -z "$_pkg_descr" ] && die "Cannot build a package without a descripion.";
 _pkg_group="${pkg_group:-}"; [ -z "$_pkg_group" ] && die "Cannot build a package without a group.";
+_pkg_release="${pkg_release:-}";
 _pkg_provides="${pkg_provides:-}";
 _pkg_conflicts="${pkg_conflicts:-}";
 _pkg_deps="${pkg_deps:-}";
@@ -89,23 +87,23 @@ pkg_is_not_dev_dbg() {
 	return "${_pkg_is_not_dev_dbg}";
 }
 
+apt_resolv_log="apt_resolv.log";
+[ -d "${__jenkins_scripts_dir:-./.jenkins}" ]	\
+	&& apt_resolv_log="${__jenkins_scripts_dir:-./.jenkins}/${apt_resolv_log}";
+apt_resolv_log_per_cont="${apt_resolv_log}.${DEFAULT_STEP_CONT}";
+
 # Transform the JSON list of dependencies into a comma separated list. This
 # happens only for packages different than -dev or -dbg (detected via
 # pkg_suffix, where pkg_suffix might also be empty).
 _pkg_requires="";
 if [ -n "$_pkg_deps" ] && pkg_is_not_dev_dbg; then
-	apt_resolv_log="apt_resolv.log";
-	[ -d "${__jenkins_scripts_dir:-./.jenkins}" ]	\
-		&& apt_resolv_log="${__jenkins_scripts_dir:-./.jenkins}/${apt_resolv_log}";
-	[ ! -f "$apt_resolv_log" ] && apt_resolv_log="";
-
 	_pkg_deps_len="$(echo "$_pkg_deps" | $_jq '. | length')";
 	i="0";
 	while [ "$i" -lt "$_pkg_deps_len" ]; do
 		dep="$(echo "$_pkg_deps" | $_jq ".[$i]")";
 		dep_from_compile="";
-		[ -n "$apt_resolv_log" ] && [ -n "$_pkg_deps_exact" ] && [ "$_pkg_deps_exact" == "true" ] && {
-			dep_from_compile="$(grep -E "^$dep=" "$apt_resolv_log" 2>/dev/null || true)";
+		[ -n "$apt_resolv_log_per_cont" ] && [ -n "$_pkg_deps_exact" ] && [ "$_pkg_deps_exact" == "true" ] && {
+			dep_from_compile="$(grep -E "^$dep=" "$apt_resolv_log_per_cont" 2>/dev/null || true)";
 			[ -n "$dep_from_compile" ] && {
 				# https://stackoverflow.com/questions/18365600/how-to-manage-multiple-package-dependencies-with-checkinstall
 				# dep_from_compile="$(echo "$dep_from_compile" | sed -E 's/^(.*)=(.*)$/\1 \\(= \2\\)/g')";
@@ -128,24 +126,13 @@ fi
 cp "$PAK_FILES_LOCATION"/*-pak ./ || true;
 
 # Generate description-pak
-_git_clone_log="${__jenkins_scripts_dir:-./.jenkins}/git_clone_update.log";
-echo "$_pkg_descr" > description-pak;
-{
-	echo "";
-	echo "rtbrick_package_properties:";
-	echo "    version: $_ver_str";
-	echo "    branch: $BRANCH";
-	echo "    commit: $GIT_COMMIT";
-	echo "    commit_timestamp: $GIT_COMMIT_TS";
-	echo "    commit_date: $GIT_COMMIT_DATE";
-	echo "    build_timestamp: $_build_ts";
-	echo "    build_date: $_build_date";
-	echo "    build_job_hash: $_build_job_hash";
-	if [ -f "$_git_clone_log" ]; then
-		echo "    git_dependencies:";
-		cat "$_git_clone_log";
-	fi
-} >> description-pak;
+# NOTE: When checkinstall is called we also pass on `--summary=$_pkg_descr`
+# (see the _checkinstall_args array around lines 350-360). Thus what we put
+# now in description-pak will become the "long description" of the package
+# (starting at line 2).
+pkg_uuid="$($_uuidgen)";
+[ -z "$pkg_uuid" ] && die "Can't continue without a package UUID.";
+printf " RtBrick package tracker UUID=%s\n" "$pkg_uuid" > "description-pak";
 
 # Apart from running `make install` we might need to install some dynamically
 # generated files, like systemd services and/or config files. We will gather
@@ -346,7 +333,7 @@ if [ -z "$_pkg_sw_ver_skip" ] && pkg_is_not_dev_dbg; then
 	done
 fi
 
-# Install addional scripts inside the package
+# Install additional scripts inside the package
 if pkg_is_not_dev_dbg; then
 	for f in $(find "${SCRIPTS_LOCATION}/" -type f -iname '*.sh' 2>/dev/null || true); do
 		_pkg_install_cmd+=" install -o root -g root -m 0755 -D -t ${SCRIPTS_INSTALL_DEST}/ $f;";
@@ -359,8 +346,10 @@ fi
 # Get architecture and ubuntu release codename.
 rel_arch="$($_dpkg --print-architecture)";
 [ -z "$rel_arch" ] && die "Cannot build a package without knowing the arch.";
-rel_codename="$($_lsb_release -c -s)";
-[ -z "$rel_codename" ] && die "Cannot build a package without knowing the release codename.";
+[ -z "$_pkg_release" ] && {
+	_pkg_release="$($_lsb_release -c -s)";
+	[ -z "$_pkg_release" ] && die "Cannot build a package without knowing the release codename.";
+}
 
 checkinstall_pkg_name="$_pkg_name";
 [ -n "$_pkg_suffix" ] && checkinstall_pkg_name="${_pkg_name}-${_pkg_suffix}";
@@ -376,6 +365,7 @@ declare -a _checkinstall_args=("--type=debian"			\
 	"--requires=$_pkg_requires"				\
 	"--pkgname=$checkinstall_pkg_name"			\
 	"--pkgversion=$_ver_str"				\
+	"--summary=$_pkg_descr"					\
 );
 
 [ -n "$_pkg_provides" ]	&& _checkinstall_args+=("--provides=$_pkg_provides");
@@ -410,7 +400,7 @@ _tmp="$(echo "$_ver_str" | grep -Ec -- '-')" && {
 	# contain a "debian_version" (called "pkg release" in
 	# checkinstall terms). See:
 	# https://www.debian.org/doc/debian-policy/ch-controlfields.html#version
-	_checkinstall_args+=("--pkgrelease=$rel_codename");
+	_checkinstall_args+=("--pkgrelease=$_pkg_release");
 };
 
 ####
@@ -448,6 +438,8 @@ done
 # Finally execute checkinstall with all the prepared arguments and install
 # commands.
 $_checkinstall "${_checkinstall_args[@]}" /bin/bash -ue -c "${_pkg_install_cmd}";
+
+logmsg "Package $checkinstall_pkg_name built with version $_ver_str and UUID $pkg_uuid" "$ME";
 
 # Restore working directory if it was changes by package commands.
 cd "${____initial_dir}";
