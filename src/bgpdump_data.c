@@ -699,6 +699,9 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
                 printf ("nexthop2: %s\n", bufn2);
               }
             r += len;
+	    if (r >= end) { /* reserved present ? */
+	      break;
+	    }
             r++; /* reserved */
 
             nlri_plen = (unsigned char) *r;

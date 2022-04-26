@@ -84,9 +84,12 @@ route_print (struct bgp_route *route)
   char buf[64], buf2[64];
   inet_ntop (qaf, route->prefix, buf, sizeof (buf));
   inet_ntop (qaf, route->nexthop, buf2, sizeof (buf2));
-  printf ("%s/%d %s ", buf, route->prefix_length, buf2);
-  printf ("origin_as: %lu ", (unsigned long) route->origin_as);
-  printf ("as-path[%d]:", route->path_size);
+  printf ("%s/%d %s", buf, route->prefix_length, buf2);
+  if (route->label) {
+      printf (" label %u", route->label);
+  }
+  printf (" origin_as: %lu", (unsigned long) route->origin_as);
+  printf (" as-path[%d]:", route->path_size);
   for (i = 0; i < MIN (route->path_size, ROUTE_PATH_LIMIT); i++)
     printf (" %lu", (unsigned long) route->path_list[i]);
   printf ("\n");
