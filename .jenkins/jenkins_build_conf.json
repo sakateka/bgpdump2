@@ -24,6 +24,31 @@
     "pkg_dev_commands": [],
     "pkg_dbg_commands": []
   },
+"focal": {
+    "containers": [
+      {
+        "name": "builder",
+        "image": "docker.rtbrick.net/devops/images/rtbrick/ubuntu-focal-builder:latest",
+        "compile_deps": [
+          "libarchive-dev",
+          "libbz2-dev",
+          "liblz-dev",
+          "zlib1g-dev",
+          "libzstd-dev"
+        ],
+        "build_commands": [
+          "./configure",
+          "make"
+        ],
+        "gitlab_repos": []
+      }
+    ],
+    "pkg_commands": [
+      "make install"
+    ],
+    "pkg_dev_commands": [],
+    "pkg_dbg_commands": []
+  },
   "__defaults__": {
     "project": "bgpdump2",
     "version_mmr": {
