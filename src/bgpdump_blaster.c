@@ -1094,6 +1094,7 @@ bgpdump_close_session_cb (struct timer_ *timer)
      */
     session->ribwalk_pnode = NULL;
     session->ribwalk_peer_index = 0;
+    session->ribwalk_prefix = NULL;
     session->ribwalk_prefix_index = 0;
     session->ribwalk_complete = false;
     session->ribwalk_withdraw = false;
