@@ -16,12 +16,11 @@
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <string.h>
-#include <stdint.h>
 #include <sys/types.h>
-#include <errno.h>
 
 #include <bzlib.h>
 #include <zlib.h>
@@ -29,171 +28,159 @@
 #include "bgpdump_file.h"
 #include "bgpdump_option.h"
 
-struct access_method methods[] =
-{
-  { (fopen_t)fopen, (fread_t)fread_wrap, (fwrite_t)fwrite,
-    (fclose_t)fclose, (feof_t)feof },
-  { (fopen_t)bopen, (fread_t)bread, (fwrite_t)bwrite,
-    (fclose_t)bclose, (feof_t)bfeof },
-  { (fopen_t)gopen, (fread_t)gread, (fwrite_t)gwrite,
-    (fclose_t)gclose, (feof_t)gzeof },
+struct access_method methods[] = {
+    {(fopen_t)fopen,
+     (fread_t)fread_wrap,
+     (fwrite_t)fwrite,
+     (fclose_t)fclose,
+     (feof_t)feof},
+    {(fopen_t)bopen,
+     (fread_t)bread,
+     (fwrite_t)bwrite,
+     (fclose_t)bclose,
+     (feof_t)bfeof},
+    {(fopen_t)gopen,
+     (fread_t)gread,
+     (fwrite_t)gwrite,
+     (fclose_t)gclose,
+     (feof_t)gzeof},
 };
 
 struct fhandle fhandle;
 int bzerror;
 
 size_t
-fread_wrap (void *ptr, size_t size, size_t nitems, void *file)
-{
-  size_t ret;
-  FILE *f = (FILE *) file;
-  ret = fread (ptr, size, nitems, f);
-  if (ferror (file))
-    {
-      fprintf (stderr, "fread error.\n");
-      return 0;
+fread_wrap(void *ptr, size_t size, size_t nitems, void *file) {
+    size_t ret;
+    FILE *f = (FILE *)file;
+    ret = fread(ptr, size, nitems, f);
+    if (ferror(file)) {
+        fprintf(stderr, "fread error.\n");
+        return 0;
     }
-  if (feof (file) && !ret)
+    if (feof(file) && !ret)
+        return 0;
+
+    if (debug) {
+        printf("fread: ret: %ld\n", ret);
+    }
+    return ret;
+}
+
+void *
+bopen(const char *filename, const char *mode) {
+    struct fhandle *f = &fhandle;
+    f->file1 = fopen(filename, mode);
+    if (!f->file1)
+        return NULL;
+    f->file2 = BZ2_bzReadOpen(&bzerror, f->file1, 0, 0, NULL, 0);
+    if (bzerror != BZ_OK) {
+        errno = bzerror;
+        bclose(f);
+        return NULL;
+    }
+    return f;
+}
+
+size_t
+bread(void *ptr, size_t size, size_t nitems, void *file) {
+    struct fhandle *f = (struct fhandle *)file;
+    size_t ret;
+    ret = BZ2_bzRead(&bzerror, (BZFILE *)f->file2, ptr, size * nitems);
+    if (bzerror == BZ_STREAM_END) {
+        char unused[1024];
+        int nunused = sizeof(unused);
+        BZ2_bzReadGetUnused(
+            &bzerror, (BZFILE *)f->file2, (void **)&unused, &nunused
+        );
+    }
+    return ret;
+}
+
+size_t
+bwrite(void *ptr, size_t size, size_t nitems, void *file) {
     return 0;
+}
 
-  if (debug) {
-      printf ("fread: ret: %ld\n", ret);
-  }
-  return ret;
+int
+bclose(void *file) {
+    struct fhandle *f = (struct fhandle *)file;
+    BZ2_bzReadClose(&bzerror, (BZFILE *)f->file2);
+    fclose(f->file1);
+    f->file2 = NULL;
+    f->file1 = NULL;
+    return 0;
+}
+
+int
+bfeof(void *file) {
+    struct fhandle *f = (struct fhandle *)file;
+    int ret;
+    ret = feof(f->file1);
+    return ret;
 }
 
 void *
-bopen (const char *filename, const char *mode)
-{
-  struct fhandle *f = &fhandle;
-  f->file1 = fopen (filename, mode);
-  if (! f->file1)
-    return NULL;
-  f->file2 = BZ2_bzReadOpen (&bzerror, f->file1, 0, 0, NULL, 0);
-  if (bzerror != BZ_OK)
-    {
-      errno = bzerror;
-      bclose (f);
-      return NULL;
+gopen(const char *filename, const char *mode) {
+    gzFile f;
+    f = gzopen(filename, mode);
+    if (!f) {
+        fprintf(stderr, "gzopen() failed: %s\n", strerror(errno));
+        return NULL;
     }
-  return f;
+    return f;
 }
 
 size_t
-bread (void *ptr, size_t size, size_t nitems, void *file)
-{
-  struct fhandle *f = (struct fhandle *) file;
-  size_t ret;
-  ret = BZ2_bzRead (&bzerror, (BZFILE *) f->file2, ptr, size * nitems);
-  if (bzerror == BZ_STREAM_END)
-    {
-      char unused[1024];
-      int nunused = sizeof (unused);
-      BZ2_bzReadGetUnused (&bzerror, (BZFILE *) f->file2,
-                           (void **)&unused, &nunused);
+gread(void *ptr, size_t size, size_t nitems, void *file) {
+    gzFile f = (gzFile)file;
+    int ret = 0;
+    ret = gzread(f, ptr, size * nitems);
+    if (ret < 0) {
+        fprintf(stderr, "gzread failed.\n");
+        return ret;
     }
-  return ret;
+    return ret;
 }
 
 size_t
-bwrite (void *ptr, size_t size, size_t nitems, void *file)
-{
-  return 0;
+gwrite(void *ptr, size_t size, size_t nitems, void *file) {
+    return 0;
 }
 
 int
-bclose (void *file)
-{
-  struct fhandle *f = (struct fhandle *) file;
-  BZ2_bzReadClose (&bzerror, (BZFILE *) f->file2);
-  fclose (f->file1);
-  f->file2 = NULL;
-  f->file1 = NULL;
-  return 0;
-}
-
-int
-bfeof (void *file)
-{
-  struct fhandle *f = (struct fhandle *) file;
-  int ret;
-  ret = feof (f->file1);
-  return ret;
-}
-
-void *
-gopen (const char *filename, const char *mode)
-{
-  gzFile f;
-  f = gzopen (filename, mode);
-  if (! f)
-    {
-      fprintf (stderr, "gzopen() failed: %s\n", strerror (errno));
-      return NULL;
-    }
-  return f;
-}
-
-size_t
-gread (void *ptr, size_t size, size_t nitems, void *file)
-{
-  gzFile f = (gzFile ) file;
-  int ret = 0;
-  ret = gzread (f, ptr, size * nitems);
-  if (ret < 0)
-    {
-      fprintf (stderr, "gzread failed.\n");
-      return ret;
-    }
-  return ret;
-}
-
-size_t
-gwrite (void *ptr, size_t size, size_t nitems, void *file)
-{
-  return 0;
-}
-
-int
-gclose (void *file)
-{
-  gzFile f = (gzFile) file;
-  gzclose (f);
-  return 0;
+gclose(void *file) {
+    gzFile f = (gzFile)file;
+    gzclose(f);
+    return 0;
 }
 
 file_format_t
-get_file_format (char *filename)
-{
-  char *p;
-  p = rindex (filename, '.');
-  if (p == NULL)
-    return FORMAT_RAW;
-  if (! strcmp (p, ".bz2"))
-    {
-      //printf ("file type: bzip2.\n");
-      return FORMAT_BZIP2;
+get_file_format(char *filename) {
+    char *p;
+    p = rindex(filename, '.');
+    if (p == NULL)
+        return FORMAT_RAW;
+    if (!strcmp(p, ".bz2")) {
+        // printf ("file type: bzip2.\n");
+        return FORMAT_BZIP2;
     }
-  if (! strcmp (p, ".gz"))
-    return FORMAT_GZIP;
-  return FORMAT_RAW;
+    if (!strcmp(p, ".gz"))
+        return FORMAT_GZIP;
+    return FORMAT_RAW;
 }
 
 struct access_method *
-get_access_method (file_format_t format)
-{
-  switch (format)
-    {
+get_access_method(file_format_t format) {
+    switch (format) {
     case FORMAT_RAW:
-      return &methods[FORMAT_RAW];
+        return &methods[FORMAT_RAW];
     case FORMAT_BZIP2:
-      return &methods[FORMAT_BZIP2];
+        return &methods[FORMAT_BZIP2];
     case FORMAT_GZIP:
-      return &methods[FORMAT_GZIP];
+        return &methods[FORMAT_GZIP];
     default:
-      return NULL;
+        return NULL;
     }
-  return NULL;
+    return NULL;
 }
-
-

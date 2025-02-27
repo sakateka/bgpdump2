@@ -15,24 +15,29 @@
  * You should have received a copy of the GNU General Public License along
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#pragma once
 
 #include "bgpdump.h"
 
-struct query
-{
-  char destination[MAX_ADDR_LENGTH];
-  int plen;
-  char nexthop[MAX_ADDR_LENGTH];
+struct query {
+    char destination[MAX_ADDR_LENGTH];
+    int plen;
+    char nexthop[MAX_ADDR_LENGTH];
 };
 
 extern struct query *query_table;
 extern uint64_t query_limit;
 extern uint64_t query_size;
 
-void query_init ();
-void query_addr (char *lookup_addr);
-unsigned long query_file_count (char *lookup_file);
-void query_file (char *lookup_file);
-void query_random (int ntimes);
-void query_list ();
-
+void
+query_init();
+void
+query_addr(char *lookup_addr);
+unsigned long
+query_file_count(char *lookup_file);
+void
+query_file(char *lookup_file);
+void
+query_random(int ntimes);
+void
+query_list();

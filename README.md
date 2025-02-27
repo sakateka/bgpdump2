@@ -1,4 +1,17 @@
-Usage: ./bgpdump2 [options] <file1> <file2> ...
+## Build from source
+
+### Install dependencies
+```sh
+sudo apt install libbz2-dev liblz-dev
+```
+
+###  Setup and compile
+```sh
+meson setup build
+meson compile -C build
+
+build/src/bgpdump2 -h
+Usage: build/src/bgpdump2 [options] <file1> <file2> ...
 -h, --help                Display this help and exit.
 -V, --version             Print the program version.
 -v, --verbose             Print verbose information.
@@ -11,6 +24,7 @@ Usage: ./bgpdump2 [options] <file1> <file2> ...
 -S, --next-hop-self <addr> Overwrite nexthop attribute.
 -a, --autnum <asn>        Blaster Mode. Specify ASN.
                           At most 8 ASNs can be specified.
+-w, --withdraw-delay      Blaster Mode. Send withdraw after <N> seconds.
 -P, --peer-table          Display the peer table and exit.
 -p, --peer <peer_index>   Specify peers by peer_index.
                           At most 8 peers can be specified.
@@ -32,3 +46,10 @@ Usage: ./bgpdump2 [options] <file1> <file2> ...
 -6, --ipv6                Specify that the query is IPv6.
 -H, --heatmap <file-prefix> Produces the heatmap.
 -t, --log <log-name>      Turn on logging.
+```
+
+## Load test example
+```sh
+ulimit -n 65536
+/usr/local/sbin/bgpdump2 --blaster $TARGET_IP -p $INDEX -a $LOCAL_AS -T $PREFIX_COUNT -S $LOCAL_ADDR mrt-file.bz2
+```

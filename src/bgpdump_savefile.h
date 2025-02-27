@@ -16,6 +16,7 @@
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-void bgpdump_input (char *input);
-void bgpdump_output (char *output);
-
+void
+bgpdump_input(char *input);
+void
+bgpdump_output(char *output);

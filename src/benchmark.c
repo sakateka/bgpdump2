@@ -16,44 +16,41 @@
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
-#include <sys/types.h>
 #include <sys/time.h>
+#include <sys/types.h>
 
 struct timeval start, end, diff;
 
 void
-benchmark_start ()
-{
-  gettimeofday (&start, NULL);
+benchmark_start() {
+    gettimeofday(&start, NULL);
 }
 
 void
-benchmark_stop ()
-{
-  gettimeofday (&end, NULL);
+benchmark_stop() {
+    gettimeofday(&end, NULL);
 }
 
 void
-benchmark_print (uint64_t query_size)
-{
-  diff.tv_sec = end.tv_sec;
-  diff.tv_usec = end.tv_usec;
-  if (end.tv_usec < start.tv_usec)
-    {
-      diff.tv_sec--;
-      diff.tv_usec += 1000000;
+benchmark_print(uint64_t query_size) {
+    diff.tv_sec = end.tv_sec;
+    diff.tv_usec = end.tv_usec;
+    if (end.tv_usec < start.tv_usec) {
+        diff.tv_sec--;
+        diff.tv_usec += 1000000;
     }
-  diff.tv_usec -= start.tv_usec;
-  diff.tv_sec -= start.tv_sec;
+    diff.tv_usec -= start.tv_usec;
+    diff.tv_sec -= start.tv_sec;
 
-  diff.tv_usec += 1000000 * diff.tv_sec;
-  printf ("%llu query: %lu usec (%f Mlps)\n",
-          (unsigned long long) query_size,
-          (unsigned long) diff.tv_usec,
-          (double) query_size / diff.tv_usec * 1000000 / 1000000);
+    diff.tv_usec += 1000000 * diff.tv_sec;
+    printf(
+        "%llu query: %lu usec (%f Mlps)\n",
+        (unsigned long long)query_size,
+        (unsigned long)diff.tv_usec,
+        (double)query_size / diff.tv_usec * 1000000 / 1000000
+    );
 }
-

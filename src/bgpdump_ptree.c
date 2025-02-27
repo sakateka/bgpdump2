@@ -16,19 +16,17 @@
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/queue.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
-#include <sys/time.h>
 #include <assert.h>
+#include <netinet/in.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/queue.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/types.h>
 
-#include "queue.h"
 #include "ptree.h"
 
 #include "bgpdump_option.h"
@@ -36,56 +34,48 @@
 #include "bgpdump_route.h"
 
 void
-ptree_list (struct ptree *ptree)
-{
-  uint64_t count = 0;
-  struct ptree_node *x;
-  struct bgp_route *br;
-  char buf[64], buf2[64];
+ptree_list(struct ptree *ptree) {
+    uint64_t count = 0;
+    struct ptree_node *x;
+    struct bgp_route *br;
+    char buf[64], buf2[64];
 
-  printf ("listing ptree.\n");
-  for (x = ptree_head (ptree); x; x = ptree_next (x))
-    {
-      if (x->data)
-        {
-          br = x->data;
-          inet_ntop (qaf, br->prefix, buf, sizeof (buf));
-          inet_ntop (qaf, br->nexthop, buf2, sizeof (buf2));
-          printf ("%s/%d: %s\n", buf, br->prefix_length, buf2);
-          count++;
+    printf("listing ptree.\n");
+    for (x = ptree_head(ptree); x; x = ptree_next(x)) {
+        if (x->data) {
+            br = x->data;
+            inet_ntop(qaf, br->prefix, buf, sizeof(buf));
+            inet_ntop(qaf, br->nexthop, buf2, sizeof(buf2));
+            printf("%s/%d: %s\n", buf, br->prefix_length, buf2);
+            count++;
         }
-      if (debug)
-        ptree_node_print (x);
+        if (debug)
+            ptree_node_print(x);
     }
-  printf ("number of routes: %llu\n", (unsigned long long) count);
+    printf("number of routes: %llu\n", (unsigned long long)count);
 }
 
 void
-ptree_query (struct ptree *ptree,
-             struct query *query_table, uint64_t query_size)
-{
-  int i;
-  struct ptree_node *x;
+ptree_query(
+    struct ptree *ptree, struct query *query_table, uint64_t query_size
+) {
+    int i;
+    struct ptree_node *x;
 
-  for (i = 0; i < query_size; i++)
-    {
-      char *query = query_table[i].destination;
-      char *answer = query_table[i].nexthop;
-      int plen = (qaf == AF_INET ? 32 : 128);
-      x = ptree_search (query, plen, ptree);
-      if (x)
-        {
-          struct bgp_route *route = x->data;
-          memcpy (answer, route->nexthop, MAX_ADDR_LENGTH);
-          if (! benchmark)
-            route_print (route);
-        }
-      else if (! benchmark)
-        {
-          char buf[64];
-          inet_ntop (qaf, query, buf, sizeof (buf));
-          printf ("%s: no route found.\n", buf);
+    for (i = 0; i < query_size; i++) {
+        char *query = query_table[i].destination;
+        char *answer = query_table[i].nexthop;
+        int plen = (qaf == AF_INET ? 32 : 128);
+        x = ptree_search(query, plen, ptree);
+        if (x) {
+            struct bgp_route *route = x->data;
+            memcpy(answer, route->nexthop, MAX_ADDR_LENGTH);
+            if (!benchmark)
+                route_print(route);
+        } else if (!benchmark) {
+            char buf[64];
+            inet_ntop(qaf, query, buf, sizeof(buf));
+            printf("%s: no route found.\n", buf);
         }
     }
 }
-

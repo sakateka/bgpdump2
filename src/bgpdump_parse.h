@@ -20,7 +20,6 @@
 #define _BGPDUMP_PARSE_H_
 
 unsigned long long
-resolv_number (char *notation, char **endptr);
+resolv_number(char *notation, char **endptr);
 
 #endif /*_BGPDUMP_PARSE_H_*/
-

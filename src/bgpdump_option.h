@@ -53,10 +53,12 @@ extern int prefix_limit;
 extern unsigned long long bufsiz;
 extern unsigned long long nroutes;
 
-void usage ();
-void version ();
+void
+usage();
+void
+version();
 
 int
-bgpdump_getopt (int argc, char **argv);
+bgpdump_getopt(int argc, char **argv);
 
 #endif /* __BGPDUMP_OPTION_H__ */

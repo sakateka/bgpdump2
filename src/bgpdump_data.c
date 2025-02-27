@@ -16,40 +16,39 @@
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <arpa/inet.h>
+#include <assert.h>
+#include <netinet/in.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <sys/queue.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <time.h>
-#include <assert.h>
 
-#include "ptree.h"
 #include "bgpdump.h"
+#include "bgpdump_data.h"
 #include "bgpdump_option.h"
 #include "bgpdump_peer.h"
-#include "bgpdump_route.h"
-#include "bgpdump_data.h"
 #include "bgpdump_peerstat.h"
+#include "bgpdump_route.h"
 #include "bgpdump_udiff.h"
+#include "ptree.h"
 
 extern struct bgp_route *diff_table[];
 extern struct ptree *diff_ptree[];
 
 #ifndef MAX
-#define MAX(a,b) (a > b ? a : b)
+#define MAX(a, b) (a > b ? a : b)
 #endif
 
-#define BUFFER_OVERRUN_CHECK(P,SIZE,END) \
-  if ((P) + (SIZE) > (END))              \
-    {                                    \
-      printf ("buffer overrun.\n");      \
-      return;                            \
+#define BUFFER_OVERRUN_CHECK(P, SIZE, END)                                     \
+    if ((P) + (SIZE) > (END)) {                                                \
+        printf("buffer overrun.\n");                                           \
+        return;                                                                \
     }
 
 uint32_t timestamp;
@@ -64,249 +63,244 @@ uint8_t prefix_length;
 uint32_t label;
 
 void
-bgpdump_process_mrt_header (struct mrt_header *h, struct mrt_info *info)
-{
-  unsigned long newtime;
+bgpdump_process_mrt_header(struct mrt_header *h, struct mrt_info *info) {
+    unsigned long newtime;
 
-  newtime = ntohl (h->timestamp);
+    newtime = ntohl(h->timestamp);
 
-  if (verbose && timestamp != newtime)
-    {
-      struct tm *tm;
-      char timebuf[64];
-      time_t clock;
+    if (verbose && timestamp != newtime) {
+        struct tm *tm;
+        char timebuf[64];
+        time_t clock;
 
-      clock = (time_t) newtime;
-      tm = localtime (&clock);
-      strftime (timebuf, sizeof (timebuf), "%Y/%m/%d %H:%M:%S", tm);
-      printf ("new timestamp: %lu (\"%s\")\n",
-              (unsigned long) ntohl (h->timestamp), timebuf);
+        clock = (time_t)newtime;
+        tm = localtime(&clock);
+        strftime(timebuf, sizeof(timebuf), "%Y/%m/%d %H:%M:%S", tm);
+        printf(
+            "new timestamp: %lu (\"%s\")\n",
+            (unsigned long)ntohl(h->timestamp),
+            timebuf
+        );
     }
 
-  timestamp = newtime;
-  mrt_type = ntohs (h->type);
-  mrt_subtype = ntohs (h->subtype);
-  mrt_length = ntohl (h->length);
+    timestamp = newtime;
+    mrt_type = ntohs(h->type);
+    mrt_subtype = ntohs(h->subtype);
+    mrt_length = ntohl(h->length);
 
-  info->timestamp = newtime;
-  info->type = ntohs (h->type);
-  info->subtype = ntohs (h->subtype);
-  info->length = ntohl (h->length);
+    info->timestamp = newtime;
+    info->type = ntohs(h->type);
+    info->subtype = ntohs(h->subtype);
+    info->length = ntohl(h->length);
 
-  if (show && (debug || detail))
-    printf ("MRT Header: ts: %lu type: %hu sub: %hu len: %lu\n",
-            (unsigned long) timestamp,
-            (unsigned short) mrt_type,
-            (unsigned short) mrt_subtype,
-            (unsigned long) mrt_length);
+    if (show && (debug || detail))
+        printf(
+            "MRT Header: ts: %lu type: %hu sub: %hu len: %lu\n",
+            (unsigned long)timestamp,
+            (unsigned short)mrt_type,
+            (unsigned short)mrt_subtype,
+            (unsigned long)mrt_length
+        );
 }
 
 void
-bgpdump_table_v2_peer_entry (int index, char *p, char *data_end, int *retsize)
-{
-  int size, total = 0;
-  uint8_t peer_type;
-  int asn4byte, afi_ipv6;
-  struct in_addr peer_bgp_id;
-  struct in_addr ipv4_addr;
-  struct in6_addr ipv6_addr;
-  uint16_t peer_as_2byte = 0;
-  uint32_t peer_as_4byte = 0;
+bgpdump_table_v2_peer_entry(int index, char *p, char *data_end, int *retsize) {
+    int size, total = 0;
+    uint8_t peer_type;
+    int asn4byte, afi_ipv6;
+    struct in_addr peer_bgp_id;
+    struct in_addr ipv4_addr;
+    struct in6_addr ipv6_addr;
+    uint16_t peer_as_2byte = 0;
+    uint32_t peer_as_4byte = 0;
 
-  char buf[64], buf2[64];
+    char buf[64], buf2[64];
 
-  memset (&ipv4_addr, 0, sizeof (ipv4_addr));
-  memset (&ipv6_addr, 0, sizeof (ipv6_addr));
+    memset(&ipv4_addr, 0, sizeof(ipv4_addr));
+    memset(&ipv6_addr, 0, sizeof(ipv6_addr));
 
-  size = sizeof (peer_type);
-  BUFFER_OVERRUN_CHECK(p, size, data_end)
-  peer_type = *(uint8_t *)p;
-  p += size;
-  total += size;
+    size = sizeof(peer_type);
+    BUFFER_OVERRUN_CHECK(p, size, data_end)
+    peer_type = *(uint8_t *)p;
+    p += size;
+    total += size;
 
 #define FLAG_PEER_ADDRESS_IPV6 0x01
-#define FLAG_AS_NUMBER_SIZE    0x02
-  afi_ipv6 = 0;
-  if (peer_type & FLAG_PEER_ADDRESS_IPV6)
-    afi_ipv6 = 1;
-  asn4byte = 0;
-  if (peer_type & FLAG_AS_NUMBER_SIZE)
-    asn4byte = 1;
+#define FLAG_AS_NUMBER_SIZE 0x02
+    afi_ipv6 = 0;
+    if (peer_type & FLAG_PEER_ADDRESS_IPV6)
+        afi_ipv6 = 1;
+    asn4byte = 0;
+    if (peer_type & FLAG_AS_NUMBER_SIZE)
+        asn4byte = 1;
 
-  size = sizeof (peer_bgp_id);
-  BUFFER_OVERRUN_CHECK(p, size, data_end)
-  memcpy (&peer_bgp_id, p, sizeof (peer_bgp_id));
-  p += size;
-  total += size;
+    size = sizeof(peer_bgp_id);
+    BUFFER_OVERRUN_CHECK(p, size, data_end)
+    memcpy(&peer_bgp_id, p, sizeof(peer_bgp_id));
+    p += size;
+    total += size;
 
-  if (afi_ipv6)
-    {
-      size = sizeof (ipv6_addr);
-      BUFFER_OVERRUN_CHECK(p, size, data_end)
-      memcpy (&ipv6_addr, p, size);
-      p += size;
-      total += size;
-    }
-  else
-    {
-      size = sizeof (ipv4_addr);
-      BUFFER_OVERRUN_CHECK(p, size, data_end)
-      memcpy (&ipv4_addr, p, size);
-      p += size;
-      total += size;
+    if (afi_ipv6) {
+        size = sizeof(ipv6_addr);
+        BUFFER_OVERRUN_CHECK(p, size, data_end)
+        memcpy(&ipv6_addr, p, size);
+        p += size;
+        total += size;
+    } else {
+        size = sizeof(ipv4_addr);
+        BUFFER_OVERRUN_CHECK(p, size, data_end)
+        memcpy(&ipv4_addr, p, size);
+        p += size;
+        total += size;
     }
 
-  if (asn4byte)
-    {
-      size = sizeof (peer_as_4byte);
-      BUFFER_OVERRUN_CHECK(p, size, data_end)
-      peer_as_4byte = ntohl (*(uint32_t *)p);
-      p += size;
-      total += size;
-    }
-  else
-    {
-      size = sizeof (peer_as_2byte);
-      BUFFER_OVERRUN_CHECK(p, size, data_end)
-      peer_as_2byte = ntohs (*(uint16_t *)p);
-      p += size;
-      total += size;
+    if (asn4byte) {
+        size = sizeof(peer_as_4byte);
+        BUFFER_OVERRUN_CHECK(p, size, data_end)
+        peer_as_4byte = ntohl(*(uint32_t *)p);
+        p += size;
+        total += size;
+    } else {
+        size = sizeof(peer_as_2byte);
+        BUFFER_OVERRUN_CHECK(p, size, data_end)
+        peer_as_2byte = ntohs(*(uint16_t *)p);
+        p += size;
+        total += size;
     }
 
-  inet_ntop (AF_INET, &peer_bgp_id, buf, sizeof (buf));
-  if (afi_ipv6)
-    inet_ntop (AF_INET6, &ipv6_addr, buf2, sizeof (buf2));
-  else
-    inet_ntop (AF_INET, &ipv4_addr, buf2, sizeof (buf2));
+    inet_ntop(AF_INET, &peer_bgp_id, buf, sizeof(buf));
+    if (afi_ipv6)
+        inet_ntop(AF_INET6, &ipv6_addr, buf2, sizeof(buf2));
+    else
+        inet_ntop(AF_INET, &ipv4_addr, buf2, sizeof(buf2));
 
-  if (show && (debug || detail))
-    {
-      printf ("Peer[%d]: Type: %s%s%s(%#02x) "
-              "BGP ID: %-15s AS: %-5u Address: %-15s\n",
-              index, (peer_type & FLAG_PEER_ADDRESS_IPV6 ? "ipv6" : ""),
-              ((peer_type & FLAG_PEER_ADDRESS_IPV6) &&
-               (peer_type & FLAG_AS_NUMBER_SIZE) ?
-               "|" : ""),
-              (peer_type & FLAG_AS_NUMBER_SIZE ? "4byte-as" : ""),
-              peer_type, buf,
-              (int) (asn4byte ? peer_as_4byte : peer_as_2byte), buf2);
+    if (show && (debug || detail)) {
+        printf(
+            "Peer[%d]: Type: %s%s%s(%#02x) "
+            "BGP ID: %-15s AS: %-5u Address: %-15s\n",
+            index,
+            (peer_type & FLAG_PEER_ADDRESS_IPV6 ? "ipv6" : ""),
+            ((peer_type & FLAG_PEER_ADDRESS_IPV6) &&
+                     (peer_type & FLAG_AS_NUMBER_SIZE)
+                 ? "|"
+                 : ""),
+            (peer_type & FLAG_AS_NUMBER_SIZE ? "4byte-as" : ""),
+            peer_type,
+            buf,
+            (int)(asn4byte ? peer_as_4byte : peer_as_2byte),
+            buf2
+        );
     }
 
-  if (index < PEER_MAX)
-    {
-      struct peer new;
-      memset (&new, 0, sizeof (new));
-      new.bgp_id = peer_bgp_id;
-      new.ipv6_addr = ipv6_addr;
-      new.ipv4_addr = ipv4_addr;
-      new.asnumber = (asn4byte ? peer_as_4byte : peer_as_2byte);
-      new.ipv4_root = ptree_create();
-      new.ipv6_root = ptree_create();
-      new.path_root = ptree_create();
+    if (index < PEER_MAX) {
+        struct peer new;
+        memset(&new, 0, sizeof(new));
+        new.bgp_id = peer_bgp_id;
+        new.ipv6_addr = ipv6_addr;
+        new.ipv4_addr = ipv4_addr;
+        new.asnumber = (asn4byte ? peer_as_4byte : peer_as_2byte);
+        new.ipv4_root = ptree_create();
+        new.ipv6_root = ptree_create();
+        new.path_root = ptree_create();
 
-      if (verbose || peer_table_only ||
-          (memcmp (&peer_table[index], &peer_null, sizeof (struct peer)) &&
-           memcmp (&peer_table[index], &new, sizeof (struct peer))))
-         {
-           printf ("# peer_table[%d] changed: ", index);
-           peer_print (&new);
-           printf ("\n");
-           fflush (stdout);
-         }
+        if (verbose || peer_table_only ||
+            (memcmp(&peer_table[index], &peer_null, sizeof(struct peer)) &&
+             memcmp(&peer_table[index], &new, sizeof(struct peer)))) {
+            printf("# peer_table[%d] changed: ", index);
+            peer_print(&new);
+            printf("\n");
+            fflush(stdout);
+        }
 
-      peer_table[index] = new;
-      peer_size = index + 1;
-    }
-  else
-    printf ("peer_table overflow.\n");
+        peer_table[index] = new;
+        peer_size = index + 1;
+    } else
+        printf("peer_table overflow.\n");
 
-  if (autsiz)
-    {
-      int i, local_peer_spec_size = peer_spec_size;
-      for (i = 0; i < autsiz; i++)
-        {
-          if (peer_table[index].asnumber == autnums[i] &&
-              local_peer_spec_size < PEER_INDEX_MAX)
-            {
-              printf ("peer_spec_index[%d]: register peer %d, asn %d\n",
-                       local_peer_spec_size, index, peer_table[index].asnumber);
-              peer_spec_index[local_peer_spec_size] = index;
-              peer_route_table[local_peer_spec_size] = route_table_create ();
-              peer_route_size[local_peer_spec_size] = 0;
-              peer_ptree[local_peer_spec_size] = ptree_create ();
-              local_peer_spec_size++;
+    if (autsiz) {
+        int i, local_peer_spec_size = peer_spec_size;
+        for (i = 0; i < autsiz; i++) {
+            if (peer_table[index].asnumber == autnums[i] &&
+                local_peer_spec_size < PEER_INDEX_MAX) {
+                printf(
+                    "peer_spec_index[%d]: register peer %d, asn %d\n",
+                    local_peer_spec_size,
+                    index,
+                    peer_table[index].asnumber
+                );
+                peer_spec_index[local_peer_spec_size] = index;
+                peer_route_table[local_peer_spec_size] = route_table_create();
+                peer_route_size[local_peer_spec_size] = 0;
+                peer_ptree[local_peer_spec_size] = ptree_create();
+                local_peer_spec_size++;
             }
         }
     }
 
-  *retsize = total;
+    *retsize = total;
 }
 
 void
-bgpdump_process_table_v2_peer_index_table (struct mrt_header *h,
-                                           struct mrt_info *info,
-                                           char *data_end)
-{
-  char *p;
-  int size;
-  int i;
-  struct in_addr collector_bgp_id;
-  uint16_t view_name_length;
-  char *view_name;
-  uint16_t peer_count;
-  char buf[64];
+bgpdump_process_table_v2_peer_index_table(
+    struct mrt_header *h, struct mrt_info *info, char *data_end
+) {
+    char *p;
+    int size;
+    int i;
+    struct in_addr collector_bgp_id;
+    uint16_t view_name_length;
+    char *view_name;
+    uint16_t peer_count;
+    char buf[64];
 
-  p = (char *)h + sizeof (struct mrt_header);
+    p = (char *)h + sizeof(struct mrt_header);
 
-  /* Collector BGP ID */
-  size = sizeof (collector_bgp_id);
-  BUFFER_OVERRUN_CHECK(p, size, data_end)
-  collector_bgp_id.s_addr = *(uint32_t *)p;
-  p += size;
+    /* Collector BGP ID */
+    size = sizeof(collector_bgp_id);
+    BUFFER_OVERRUN_CHECK(p, size, data_end)
+    collector_bgp_id.s_addr = *(uint32_t *)p;
+    p += size;
 
-  /* View Name Length */
-  size = sizeof (view_name_length);
-  BUFFER_OVERRUN_CHECK(p, size, data_end)
-  view_name_length = ntohs (*(uint16_t *)p);
-  p += size;
+    /* View Name Length */
+    size = sizeof(view_name_length);
+    BUFFER_OVERRUN_CHECK(p, size, data_end)
+    view_name_length = ntohs(*(uint16_t *)p);
+    p += size;
 
-  /* View Name */
-  size = view_name_length;
-  BUFFER_OVERRUN_CHECK(p, size, data_end)
-  view_name = p;
-  p += size;
+    /* View Name */
+    size = view_name_length;
+    BUFFER_OVERRUN_CHECK(p, size, data_end)
+    view_name = p;
+    p += size;
 
-  /* Peer Count */
-  size = sizeof (peer_count);
-  BUFFER_OVERRUN_CHECK(p, size, data_end)
-  peer_count = ntohs (*(uint16_t *)p);
-  p += size;
+    /* Peer Count */
+    size = sizeof(peer_count);
+    BUFFER_OVERRUN_CHECK(p, size, data_end)
+    peer_count = ntohs(*(uint16_t *)p);
+    p += size;
 
-  if (peer_table_only || (show && (debug || detail)))
-    {
-      inet_ntop (AF_INET, &collector_bgp_id, buf, sizeof (buf));
-      printf ("Collector BGP ID: %s\n", buf);
-      printf ("View Name Length: %d\n", (int) view_name_length);
-      printf ("View Name: %s\n", view_name);
-      printf ("Peer Count: %d\n", (int) peer_count);
+    if (peer_table_only || (show && (debug || detail))) {
+        inet_ntop(AF_INET, &collector_bgp_id, buf, sizeof(buf));
+        printf("Collector BGP ID: %s\n", buf);
+        printf("View Name Length: %d\n", (int)view_name_length);
+        printf("View Name: %s\n", view_name);
+        printf("Peer Count: %d\n", (int)peer_count);
     }
 
-  for (i = 0; i < peer_count; i++)
-    {
-      bgpdump_table_v2_peer_entry (i, p, data_end, &size);
-      p += size;
+    for (i = 0; i < peer_count; i++) {
+        bgpdump_table_v2_peer_entry(i, p, data_end, &size);
+        p += size;
     }
 }
 
 char *
-bgpdump_print_extd_comm (struct bgp_extd_comm *comm)
-{
-  static char buf[64];
+bgpdump_print_extd_comm(struct bgp_extd_comm *comm) {
+    static char buf[64];
 #if 0
   char ipaddr_buf[64];
 #endif
 
-  switch (comm->type << 8 | comm->subtype) {
+    switch (comm->type << 8 | comm->subtype) {
 #if 0 /* BDS does not yet support this */
 
   case 0x0002:
@@ -356,168 +350,184 @@ bgpdump_print_extd_comm (struct bgp_extd_comm *comm)
 	     comm->value[5]);
     break;
 #endif
-  default:
-    snprintf(buf, sizeof(buf), "raw:0x%02x%02x%02x%02x%02x%02x%02x%02x",
-	     comm->type, comm->subtype, comm->value[0],
-	     comm->value[1], comm->value[2], comm->value[3],
-	     comm->value[4], comm->value[5]);
-    break;
-  }
+    default:
+        snprintf(
+            buf,
+            sizeof(buf),
+            "raw:0x%02x%02x%02x%02x%02x%02x%02x%02x",
+            comm->type,
+            comm->subtype,
+            comm->value[0],
+            comm->value[1],
+            comm->value[2],
+            comm->value[3],
+            comm->value[4],
+            comm->value[5]
+        );
+        break;
+    }
 
-  return buf;
+    return buf;
 }
 
 void
-bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
-{
-  char *p = start;
-  int size;
+bgpdump_process_bgp_attributes(
+    struct bgp_route *route, char *start, char *end
+) {
+    char *p = start;
+    int size;
 
-  char attr_flags[64];
-  char *attr_name;
-  char unknown_buf[16];
+    char attr_flags[64];
+    char *attr_name;
+    char unknown_buf[16];
 
-  uint16_t attribute_type;
-  uint16_t attribute_length;
+    uint16_t attribute_type;
+    uint16_t attribute_length;
 
-  char *r;
-  int i;
+    char *r;
+    int i;
 
-#define OPTIONAL         0x8000
-#define TRANSITIVE       0x4000
-#define PARTIAL          0x2000
-#define EXTENDED_LENGTH  0x1000
+#define OPTIONAL 0x8000
+#define TRANSITIVE 0x4000
+#define PARTIAL 0x2000
+#define EXTENDED_LENGTH 0x1000
 
-#define TYPE_CODE        0x00ff
-#define ORIGIN           1
-#define AS_PATH          2
-#define NEXT_HOP         3
-#define MULTI_EXIT_DISC  4
-#define LOCAL_PREF       5
+#define TYPE_CODE 0x00ff
+#define ORIGIN 1
+#define AS_PATH 2
+#define NEXT_HOP 3
+#define MULTI_EXIT_DISC 4
+#define LOCAL_PREF 5
 #define ATOMIC_AGGREGATE 6
-#define AGGREGATOR       7
-#define COMMUNITY        8
-#define MP_REACH_NLRI    14
-#define MP_UNREACH_NLRI  15
+#define AGGREGATOR 7
+#define COMMUNITY 8
+#define MP_REACH_NLRI 14
+#define MP_UNREACH_NLRI 15
 #define EXTENDED_COMMUNITY 16
-#define LARGE_COMMUNITY  32
+#define LARGE_COMMUNITY 32
 
-  while (p < end)
-    {
-      size = sizeof (attribute_type);
-      BUFFER_OVERRUN_CHECK(p, size, end)
-      attribute_type = ntohs (*(uint16_t *)p);
-      p += size;
+    while (p < end) {
+        size = sizeof(attribute_type);
+        BUFFER_OVERRUN_CHECK(p, size, end)
+        attribute_type = ntohs(*(uint16_t *)p);
+        p += size;
 
-      snprintf (attr_flags, sizeof(attr_flags), "%s, %s, %s%s",
-        (attribute_type & OPTIONAL ?  "optional" : "well-known"),
-        (attribute_type & TRANSITIVE ?  "transitive" : "non-transitive"),
-        (attribute_type & PARTIAL ?  "partial" : "complete"),
-        (attribute_type & EXTENDED_LENGTH ?  ", extended-length" : ""));
+        snprintf(
+            attr_flags,
+            sizeof(attr_flags),
+            "%s, %s, %s%s",
+            (attribute_type & OPTIONAL ? "optional" : "well-known"),
+            (attribute_type & TRANSITIVE ? "transitive" : "non-transitive"),
+            (attribute_type & PARTIAL ? "partial" : "complete"),
+            (attribute_type & EXTENDED_LENGTH ? ", extended-length" : "")
+        );
 
-      switch (attribute_type & TYPE_CODE)
-        {
+        switch (attribute_type & TYPE_CODE) {
         case ORIGIN:
-          attr_name = "origin";
-          break;
+            attr_name = "origin";
+            break;
         case AS_PATH:
-          attr_name = "as-path";
-          break;
+            attr_name = "as-path";
+            break;
         case NEXT_HOP:
-          attr_name = "next-hop";
-          break;
+            attr_name = "next-hop";
+            break;
         case MULTI_EXIT_DISC:
-          attr_name = "multi-exit-disc";
-          break;
+            attr_name = "multi-exit-disc";
+            break;
         case LOCAL_PREF:
-          attr_name = "local-pref";
-          break;
+            attr_name = "local-pref";
+            break;
         case ATOMIC_AGGREGATE:
-          attr_name = "atomic-aggregate";
-          break;
+            attr_name = "atomic-aggregate";
+            break;
         case AGGREGATOR:
-          attr_name = "aggregator";
-          break;
+            attr_name = "aggregator";
+            break;
         case COMMUNITY:
-          attr_name = "community";
-          break;
+            attr_name = "community";
+            break;
         case MP_REACH_NLRI:
-          attr_name = "mp-reach-nlri";
-          break;
+            attr_name = "mp-reach-nlri";
+            break;
         case MP_UNREACH_NLRI:
-          attr_name = "mp-unreach-nlri";
-          break;
+            attr_name = "mp-unreach-nlri";
+            break;
         case EXTENDED_COMMUNITY:
-          attr_name = "extended-community";
-          break;
+            attr_name = "extended-community";
+            break;
         case LARGE_COMMUNITY:
-          attr_name = "large-community";
-          break;
+            attr_name = "large-community";
+            break;
         default:
-          snprintf (unknown_buf, sizeof (unknown_buf),
-                    "unknown (%d)", attribute_type & TYPE_CODE);
-          attr_name = unknown_buf;
-          break;
+            snprintf(
+                unknown_buf,
+                sizeof(unknown_buf),
+                "unknown (%d)",
+                attribute_type & TYPE_CODE
+            );
+            attr_name = unknown_buf;
+            break;
         }
 
-      if (attribute_type & EXTENDED_LENGTH)
-        {
-          size = 2;
-          BUFFER_OVERRUN_CHECK(p, size, end)
-          attribute_length = ntohs (*(uint16_t *)p);
-          p += size;
-        }
-      else
-        {
-          size = 1;
-          BUFFER_OVERRUN_CHECK(p, size, end)
-          attribute_length = *(uint8_t *)p;
-          p += size;
+        if (attribute_type & EXTENDED_LENGTH) {
+            size = 2;
+            BUFFER_OVERRUN_CHECK(p, size, end)
+            attribute_length = ntohs(*(uint16_t *)p);
+            p += size;
+        } else {
+            size = 1;
+            BUFFER_OVERRUN_CHECK(p, size, end)
+            attribute_length = *(uint8_t *)p;
+            p += size;
         }
 
-      if (show && detail)
-        printf ("  attr: %s <%s> (%#04x) len: %d\n",
-                attr_name, attr_flags, attribute_type, attribute_length);
+        if (show && detail)
+            printf(
+                "  attr: %s <%s> (%#04x) len: %d\n",
+                attr_name,
+                attr_flags,
+                attribute_type,
+                attribute_length
+            );
 
-      BUFFER_OVERRUN_CHECK(p, attribute_length, end)
-      switch (attribute_type & TYPE_CODE)
-        {
+        BUFFER_OVERRUN_CHECK(p, attribute_length, end)
+        switch (attribute_type & TYPE_CODE) {
         case AS_PATH:
-          r = p;
-          while (r < p + attribute_length)
-            {
-              uint8_t type = *(uint8_t *) r;
-              r++;
-              uint8_t path_size = *(uint8_t *) r;
-              r++;
+            r = p;
+            while (r < p + attribute_length) {
+                uint8_t type = *(uint8_t *)r;
+                r++;
+                uint8_t path_size = *(uint8_t *)r;
+                r++;
 
-              if (show && detail)
-                printf ("    as_path[%s:%d]:",
-                        (type == 1 ? "set" : "seq"), path_size);
+                if (show && detail)
+                    printf(
+                        "    as_path[%s:%d]:",
+                        (type == 1 ? "set" : "seq"),
+                        path_size
+                    );
 
-              route->path_size = path_size;
-              for (i = 0; i < path_size; i++)
-                {
-                  uint32_t as_path = ntohl (*(uint32_t *) r);
+                route->path_size = path_size;
+                for (i = 0; i < path_size; i++) {
+                    uint32_t as_path = ntohl(*(uint32_t *)r);
 
-                  if (show && detail)
-                    printf (" %lu", (unsigned long) as_path);
+                    if (show && detail)
+                        printf(" %lu", (unsigned long)as_path);
 
-                  if (i < ROUTE_PATH_LIMIT)
-                    route->path_list[i] = as_path;
+                    if (i < ROUTE_PATH_LIMIT)
+                        route->path_list[i] = as_path;
 #if 1
-                  else
-                    {
-                      if (show && detail)
-                        printf ("\n");
-                      printf ("path_list buffer overflow.\n");
-                      route_print (route);
+                    else {
+                        if (show && detail)
+                            printf("\n");
+                        printf("path_list buffer overflow.\n");
+                        route_print(route);
                     }
 #endif
 
-                  if (i == path_size - 1)
-                    {
-                      route->origin_as = as_path;
+                    if (i == path_size - 1) {
+                        route->origin_as = as_path;
                     }
 
 #if 0
@@ -543,131 +553,138 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
                     }
 #endif
 
-                  r += sizeof (as_path);
+                    r += sizeof(as_path);
                 }
 
-              if (show && detail)
-                printf ("\n");
+                if (show && detail)
+                    printf("\n");
             }
-          break;
+            break;
 
         case NEXT_HOP:
-          memset (route->nexthop, 0, sizeof (route->nexthop));
-          memcpy (route->nexthop, p, attribute_length);
-          if (show && detail)
-            {
-              char buf[32];
-              inet_ntop (qaf, route->nexthop, buf, sizeof (buf));
-              printf ("    nexthop: %s\n", buf);
+            memset(route->nexthop, 0, sizeof(route->nexthop));
+            memcpy(route->nexthop, p, attribute_length);
+            if (show && detail) {
+                char buf[32];
+                inet_ntop(qaf, route->nexthop, buf, sizeof(buf));
+                printf("    nexthop: %s\n", buf);
             }
-          break;
+            break;
 
         case ORIGIN:
-          if (show && detail)
-            printf ("    origin: %d\n", (int) *p);
-          route->origin = (uint8_t) *p;
-          break;
+            if (show && detail)
+                printf("    origin: %d\n", (int)*p);
+            route->origin = (uint8_t)*p;
+            break;
 
         case ATOMIC_AGGREGATE:
-          if (show && detail)
-            printf ("    atomic_aggregate: len: %d\n", attribute_length);
-          route->atomic_aggregate++;
-          break;
+            if (show && detail)
+                printf("    atomic_aggregate: len: %d\n", attribute_length);
+            route->atomic_aggregate++;
+            break;
 
         case LOCAL_PREF:
-	  route->localpref_set = 1;
-          route->localpref = ntohl (*(uint32_t *)p);
-          if (show && detail)
-            printf ("    local-pref: %u\n", (uint32_t) route->localpref);
-          break;
+            route->localpref_set = 1;
+            route->localpref = ntohl(*(uint32_t *)p);
+            if (show && detail)
+                printf("    local-pref: %u\n", (uint32_t)route->localpref);
+            break;
 
         case MULTI_EXIT_DISC:
-	  route->med_set = 1;
-          route->med = ntohl (*(uint32_t *)p);
-          if (show && detail)
-            printf ("    med: %u\n", (uint32_t) route->med);
-          break;
+            route->med_set = 1;
+            route->med = ntohl(*(uint32_t *)p);
+            if (show && detail)
+                printf("    med: %u\n", (uint32_t)route->med);
+            break;
 
-        case COMMUNITY:
-	  {
-	    int idx;
+        case COMMUNITY: {
+            int idx;
 
-	    route->community_size = attribute_length >> 2;
-	    if (route->community_size > ROUTE_COMM_LIMIT) {
-	      route->community_size = ROUTE_COMM_LIMIT;
-	    }
+            route->community_size = attribute_length >> 2;
+            if (route->community_size > ROUTE_COMM_LIMIT) {
+                route->community_size = ROUTE_COMM_LIMIT;
+            }
 
-	    for (idx = 0; idx < route->community_size; idx++) {
-	      route->community[idx] = ntohl (*(uint32_t *)(p+idx*4));
+            for (idx = 0; idx < route->community_size; idx++) {
+                route->community[idx] = ntohl(*(uint32_t *)(p + idx * 4));
 
-	      if (show && detail) {
-		printf ("%s %u:%u",
-			idx ? "," : "    community:",
-			route->community[idx] >> 16,
-			route->community[idx] & 0xffff);
-	      }
-	    }
+                if (show && detail) {
+                    printf(
+                        "%s %u:%u",
+                        idx ? "," : "    community:",
+                        route->community[idx] >> 16,
+                        route->community[idx] & 0xffff
+                    );
+                }
+            }
 
-	    if (show && detail)
-	      printf ("\n");
-	    break;
-	  }
+            if (show && detail)
+                printf("\n");
+            break;
+        }
 
-        case EXTENDED_COMMUNITY:
-	  {
-	    int idx;
+        case EXTENDED_COMMUNITY: {
+            int idx;
 
-	    route->extd_community_size = attribute_length >> 3;
-	    if (route->extd_community_size > ROUTE_EXTD_COMM_LIMIT) {
-	      route->extd_community_size = ROUTE_EXTD_COMM_LIMIT;
-	    }
+            route->extd_community_size = attribute_length >> 3;
+            if (route->extd_community_size > ROUTE_EXTD_COMM_LIMIT) {
+                route->extd_community_size = ROUTE_EXTD_COMM_LIMIT;
+            }
 
-	    for (idx = 0; idx < route->extd_community_size; idx++) {
-	      memcpy(&route->extd_community[idx], p+idx*8, sizeof(struct bgp_extd_comm));
+            for (idx = 0; idx < route->extd_community_size; idx++) {
+                memcpy(
+                    &route->extd_community[idx],
+                    p + idx * 8,
+                    sizeof(struct bgp_extd_comm)
+                );
 
-	      if (show && detail) {
-		printf ("%s %s",
-			idx ? "," : "    extended-community:",
-			bgpdump_print_extd_comm(&route->extd_community[idx]));
-	      }
-	    }
+                if (show && detail) {
+                    printf(
+                        "%s %s",
+                        idx ? "," : "    extended-community:",
+                        bgpdump_print_extd_comm(&route->extd_community[idx])
+                    );
+                }
+            }
 
-	    if (show && detail)
-	      printf ("\n");
-	    break;
-	  }
-          break;
+            if (show && detail)
+                printf("\n");
+            break;
+        } break;
 
-        case LARGE_COMMUNITY:
-	  {
-	    int idx;
+        case LARGE_COMMUNITY: {
+            int idx;
 
-	    route->large_community_size = attribute_length/12;
-	    if (route->large_community_size > ROUTE_LARGE_COMM_LIMIT) {
-	      route->large_community_size = ROUTE_LARGE_COMM_LIMIT;
-	    }
+            route->large_community_size = attribute_length / 12;
+            if (route->large_community_size > ROUTE_LARGE_COMM_LIMIT) {
+                route->large_community_size = ROUTE_LARGE_COMM_LIMIT;
+            }
 
-	    for (idx = 0; idx < route->large_community_size; idx++) {
-	      route->large_community[idx].global = ntohl (*(uint32_t *)(p+idx*12));
-	      route->large_community[idx].local1 = ntohl (*(uint32_t *)(p+idx*12+4));
-	      route->large_community[idx].local2 = ntohl (*(uint32_t *)(p+idx*12+8));
+            for (idx = 0; idx < route->large_community_size; idx++) {
+                route->large_community[idx].global =
+                    ntohl(*(uint32_t *)(p + idx * 12));
+                route->large_community[idx].local1 =
+                    ntohl(*(uint32_t *)(p + idx * 12 + 4));
+                route->large_community[idx].local2 =
+                    ntohl(*(uint32_t *)(p + idx * 12 + 8));
 
-	      if (show && detail) {
-		printf ("%s %u:%u:%u",
-			idx ? "," : "    large-community:",
-			route->large_community[idx].global,
-			route->large_community[idx].local1,
-			route->large_community[idx].local2);
-	      }
-	    }
+                if (show && detail) {
+                    printf(
+                        "%s %u:%u:%u",
+                        idx ? "," : "    large-community:",
+                        route->large_community[idx].global,
+                        route->large_community[idx].local1,
+                        route->large_community[idx].local2
+                    );
+                }
+            }
 
-	    if (show && detail)
-	      printf ("\n");
-	    break;
-	  }
+            if (show && detail)
+                printf("\n");
+            break;
+        }
 
-        case MP_REACH_NLRI:
-          {
+        case MP_REACH_NLRI: {
             unsigned short afi;
             unsigned char safi;
             unsigned char len;
@@ -675,136 +692,135 @@ bgpdump_process_bgp_attributes (struct bgp_route *route, char *start, char *end)
             char nlri_prefix[16];
 
             r = p;
-            afi = ntohs (*(unsigned short *)r);
+            afi = ntohs(*(unsigned short *)r);
             r += 2;
-            safi = (unsigned char) *r;
+            safi = (unsigned char)*r;
             r++;
-            len = (unsigned char) *r;
+            len = (unsigned char)*r;
             r++;
-            if ((debug || detail) && len != sizeof (struct in6_addr))
-              printf ("warning: MP_NLRI: nexthop len: %d\n", len);
-            memset (route->nexthop, 0, sizeof (route->nexthop));
-            memcpy (route->nexthop, r, MIN(MAX_ADDR_LENGTH, len));
-            if ((debug || verbose) && len == 2 * sizeof (struct in6_addr))
-              {
+            if ((debug || detail) && len != sizeof(struct in6_addr))
+                printf("warning: MP_NLRI: nexthop len: %d\n", len);
+            memset(route->nexthop, 0, sizeof(route->nexthop));
+            memcpy(route->nexthop, r, MIN(MAX_ADDR_LENGTH, len));
+            if ((debug || verbose) && len == 2 * sizeof(struct in6_addr)) {
                 char nexthop1[16], nexthop2[16];
                 char bufn1[64], bufn2[64];
-                memset (nexthop1, 0, sizeof (nexthop1));
-                memset (nexthop2, 0, sizeof (nexthop2));
-                memcpy (nexthop1, &r[0], 16);
-                memcpy (nexthop2, &r[16], 16);
-                inet_ntop (AF_INET6, nexthop1, bufn1, sizeof (bufn1));
-                inet_ntop (AF_INET6, nexthop2, bufn2, sizeof (bufn2));
-                printf ("nexthop1: %s\n", bufn1);
-                printf ("nexthop2: %s\n", bufn2);
-              }
+                memset(nexthop1, 0, sizeof(nexthop1));
+                memset(nexthop2, 0, sizeof(nexthop2));
+                memcpy(nexthop1, &r[0], 16);
+                memcpy(nexthop2, &r[16], 16);
+                inet_ntop(AF_INET6, nexthop1, bufn1, sizeof(bufn1));
+                inet_ntop(AF_INET6, nexthop2, bufn2, sizeof(bufn2));
+                printf("nexthop1: %s\n", bufn1);
+                printf("nexthop2: %s\n", bufn2);
+            }
             r += len;
-	    if (r >= end) { /* reserved present ? */
-	      break;
-	    }
+            if (r >= end) { /* reserved present ? */
+                break;
+            }
             r++; /* reserved */
 
-            nlri_plen = (unsigned char) *r;
+            nlri_plen = (unsigned char)*r;
             r++;
-            //printf ("nlri_plen: %d\n", nlri_plen);
-            memset (nlri_prefix, 0, sizeof (nlri_prefix));
-            memcpy (nlri_prefix, r, (nlri_plen + 7) / 8);
+            // printf ("nlri_plen: %d\n", nlri_plen);
+            memset(nlri_prefix, 0, sizeof(nlri_prefix));
+            memcpy(nlri_prefix, r, (nlri_plen + 7) / 8);
 
-            if (show && detail)
-              {
+            if (show && detail) {
                 char buf[64], buf2[64];
-                inet_ntop (AF_INET6, route->nexthop, buf2, sizeof (buf2));
-                inet_ntop (AF_INET6, nlri_prefix, buf, sizeof (buf));
-                printf ("    mp_reach_nlri: (afi/safi: %d/%d) %s(size:%d) %s/%d\n",
-                        afi, safi, buf2, len, buf, nlri_plen);
-              }
-          }
-          break;
+                inet_ntop(AF_INET6, route->nexthop, buf2, sizeof(buf2));
+                inet_ntop(AF_INET6, nlri_prefix, buf, sizeof(buf));
+                printf(
+                    "    mp_reach_nlri: (afi/safi: %d/%d) %s(size:%d) %s/%d\n",
+                    afi,
+                    safi,
+                    buf2,
+                    len,
+                    buf,
+                    nlri_plen
+                );
+            }
+        } break;
 
         default:
-          break;
+            break;
         }
 
-      p += attribute_length;
+        p += attribute_length;
     }
-
 }
 
 void
-bgpdump_rewrite_nh (uint8_t *raw_path, uint16_t path_length)
-{
-  uint8_t pa_flags, pa_type;
-  uint16_t pa_length;
-  uint8_t *pa;
+bgpdump_rewrite_nh(uint8_t *raw_path, uint16_t path_length) {
+    uint8_t pa_flags, pa_type;
+    uint16_t pa_length;
+    uint8_t *pa;
 
-  pa = raw_path;
-  while (pa < (raw_path + path_length)) {
-    pa_flags = *pa;
-    pa_type = *(pa+1);
-    pa += 2;
-    if (pa_flags & 0x10) { /* extended length ? */
-      pa_length = *pa << 8 | *(pa+1);
-      pa += 2;
-    } else {
-      pa_length = *pa;
-      pa++;
+    pa = raw_path;
+    while (pa < (raw_path + path_length)) {
+        pa_flags = *pa;
+        pa_type = *(pa + 1);
+        pa += 2;
+        if (pa_flags & 0x10) { /* extended length ? */
+            pa_length = *pa << 8 | *(pa + 1);
+            pa += 2;
+        } else {
+            pa_length = *pa;
+            pa++;
+        }
+
+        switch (pa_type) {
+        case NEXT_HOP: /* ipv4 next hop */
+            if (nhs == AF_INET) {
+                memcpy(pa, &nhs_addr4.sin_addr, 4);
+            }
+            return;
+        case MP_REACH_NLRI: {
+            uint16_t afi;
+            uint8_t safi, nh_len;
+
+            afi = *pa << 8 | *(pa + 1);
+            safi = *(pa + 2);
+            nh_len = *(pa + 3);
+
+            /* ipv6 unicast */
+            if (nhs == AF_INET6 && afi == 2 && safi == 1 && nh_len == 16) {
+                memcpy(pa + 4, &nhs_addr6.sin6_addr, 16);
+            }
+
+            /* ipv6 labeled unicast */
+            if (nhs == AF_INET6 && afi == 2 && safi == 4 && nh_len == 16) {
+                memcpy(pa + 4, &nhs_addr6.sin6_addr, 16);
+            }
+
+            /* ipv6 unicast, mapped ipv4 nexthop */
+            if (nhs == AF_INET && afi == 2 && safi == 1 && nh_len == 16) {
+                memcpy(pa + 4 + 12, &nhs_addr4.sin_addr, 4);
+            }
+
+            /* ipv6 labeled unicast, mapped ipv4 nexthop */
+            if (nhs == AF_INET && afi == 2 && safi == 4 && nh_len == 16) {
+                memcpy(pa + 4 + 12, &nhs_addr4.sin_addr, 4);
+            }
+
+            /* ipv4 labeled unicast */
+            if (nhs == AF_INET && afi == 1 && safi == 4 && nh_len == 4) {
+                memcpy(pa + 4, &nhs_addr4.sin_addr, 4);
+            }
+        }
+            return;
+        default:
+            break;
+        }
+        pa += pa_length;
     }
-
-    switch (pa_type) {
-    case NEXT_HOP: /* ipv4 next hop */
-      if (nhs == AF_INET) {
-	memcpy(pa, &nhs_addr4.sin_addr, 4);
-      }
-      return;
-    case MP_REACH_NLRI:
-      {
-	uint16_t afi;
-	uint8_t safi, nh_len;
-
-	afi = *pa << 8 | *(pa+1);
-	safi = *(pa+2);
-	nh_len = *(pa+3);
-
-	/* ipv6 unicast */
-	if (nhs == AF_INET6 && afi == 2 && safi == 1 && nh_len == 16) {
-	  memcpy(pa+4, &nhs_addr6.sin6_addr, 16);
-	}
-
-	/* ipv6 labeled unicast */
-	if (nhs == AF_INET6 && afi == 2 && safi == 4 && nh_len == 16) {
-	  memcpy(pa+4, &nhs_addr6.sin6_addr, 16);
-	}
-
-	/* ipv6 unicast, mapped ipv4 nexthop */
-	if (nhs == AF_INET && afi == 2 && safi == 1 && nh_len == 16) {
-	  memcpy(pa+4+12, &nhs_addr4.sin_addr, 4);
-	}
-
-	/* ipv6 labeled unicast, mapped ipv4 nexthop */
-	if (nhs == AF_INET && afi == 2 && safi == 4 && nh_len == 16) {
-	  memcpy(pa+4+12, &nhs_addr4.sin_addr, 4);
-	}
-
-	/* ipv4 labeled unicast */
-	if (nhs == AF_INET && afi == 1 && safi == 4 && nh_len == 4) {
-	  memcpy(pa+4, &nhs_addr4.sin_addr, 4);
-	}
-
-      }
-      return;
-    default:
-      break;
-    }
-    pa += pa_length;
-  }
 }
 
 /*
  * Mark a given PA type as found.
  */
 void
-bgpdump_set_pa_bit (struct bgpdump_pa_map_ *pa_map, uint8_t pa_type)
-{
+bgpdump_set_pa_bit(struct bgpdump_pa_map_ *pa_map, uint8_t pa_type) {
     uint offset;
 
     offset = pa_type >> 3;
@@ -815,8 +831,7 @@ bgpdump_set_pa_bit (struct bgpdump_pa_map_ *pa_map, uint8_t pa_type)
  * Mark a given PA type as processed.
  */
 void
-bgpdump_reset_pa_bit (struct bgpdump_pa_map_ *pa_map, uint8_t pa_type)
-{
+bgpdump_reset_pa_bit(struct bgpdump_pa_map_ *pa_map, uint8_t pa_type) {
     uint offset;
 
     offset = pa_type >> 3;
@@ -827,8 +842,7 @@ bgpdump_reset_pa_bit (struct bgpdump_pa_map_ *pa_map, uint8_t pa_type)
  * Check if a given PA type was found.
  */
 bool
-bgpdump_get_pa_bit (struct bgpdump_pa_map_ *pa_map, uint8_t pa_type)
-{
+bgpdump_get_pa_bit(struct bgpdump_pa_map_ *pa_map, uint8_t pa_type) {
     uint offset;
 
     offset = pa_type >> 3;
@@ -836,11 +850,13 @@ bgpdump_get_pa_bit (struct bgpdump_pa_map_ *pa_map, uint8_t pa_type)
 }
 
 /*
- * Index the PA block, such that we can have a quick handle for accessing individual PAs.
+ * Index the PA block, such that we can have a quick handle for accessing
+ * individual PAs.
  */
 void
-bgpdump_index_bgp_pa (struct bgpdump_pa_map_ *pa_map, uint8_t *buffer, uint16_t buffer_len)
-{
+bgpdump_index_bgp_pa(
+    struct bgpdump_pa_map_ *pa_map, uint8_t *buffer, uint16_t buffer_len
+) {
     uint8_t pa_flags, pa_type;
     uint16_t pa_length;
 
@@ -850,347 +866,368 @@ bgpdump_index_bgp_pa (struct bgpdump_pa_map_ *pa_map, uint8_t *buffer, uint16_t 
     memset(&pa_map->pa_bitmap, 0, sizeof(pa_map->pa_bitmap));
 
     while (buffer_len > 3) {
-	pa_flags = *buffer;
-	pa_type = *(buffer+1);
+        pa_flags = *buffer;
+        pa_type = *(buffer + 1);
 
-	/* record beginning of PA */
-	pa_map->pa_start[pa_type] = buffer;
+        /* record beginning of PA */
+        pa_map->pa_start[pa_type] = buffer;
 
-	buffer += 2;
-	buffer_len -= 2;
-	pa_map->pa_length[pa_type] = 2;
+        buffer += 2;
+        buffer_len -= 2;
+        pa_map->pa_length[pa_type] = 2;
 
-	if (pa_flags & 0x10) { 	/* Extended length ? */
-	    pa_length = *buffer << 8 | *(buffer+1);
-	    buffer+=2;
-	    pa_map->pa_length[pa_type] += 2;
-	    buffer_len-=2;
-	} else {
-	    pa_length = *buffer;
-	    buffer++;
-	    pa_map->pa_length[pa_type] += 1;
-	    buffer_len--;
-	}
+        if (pa_flags & 0x10) { /* Extended length ? */
+            pa_length = *buffer << 8 | *(buffer + 1);
+            buffer += 2;
+            pa_map->pa_length[pa_type] += 2;
+            buffer_len -= 2;
+        } else {
+            pa_length = *buffer;
+            buffer++;
+            pa_map->pa_length[pa_type] += 1;
+            buffer_len--;
+        }
 
-	/* Check if pa_length overruns buffer */
-	if (pa_length > buffer_len) {
-	    return;
-	}
+        /* Check if pa_length overruns buffer */
+        if (pa_length > buffer_len) {
+            return;
+        }
 
-	/*
-	 * Update the index map, where we have found a particular PA.
-	 */
-	pa_map->pa_length[pa_type] += pa_length;
-	bgpdump_set_pa_bit(pa_map, pa_type);
+        /*
+         * Update the index map, where we have found a particular PA.
+         */
+        pa_map->pa_length[pa_type] += pa_length;
+        bgpdump_set_pa_bit(pa_map, pa_type);
 
-	buffer+= pa_length;
-	buffer_len -= pa_length;
+        buffer += pa_length;
+        buffer_len -= pa_length;
     }
 }
 
 void
-bgpdump_copy_pa (struct bgpdump_pa_map_ *pa_map, uint8_t pa_type, uint8_t **fpap)
-{
-  if (!bgpdump_get_pa_bit(pa_map, pa_type)) {
-    return;
-  }
+bgpdump_copy_pa(
+    struct bgpdump_pa_map_ *pa_map, uint8_t pa_type, uint8_t **fpap
+) {
+    if (!bgpdump_get_pa_bit(pa_map, pa_type)) {
+        return;
+    }
 
-  memcpy(*fpap, pa_map->pa_start[pa_type], pa_map->pa_length[pa_type]);
-  *fpap += pa_map->pa_length[pa_type];
+    memcpy(*fpap, pa_map->pa_start[pa_type], pa_map->pa_length[pa_type]);
+    *fpap += pa_map->pa_length[pa_type];
 
-  bgpdump_reset_pa_bit(pa_map, pa_type);
+    bgpdump_reset_pa_bit(pa_map, pa_type);
 }
 
 uint16_t
-bgpdump_filter_bgp_pa_copy_nh (struct bgpdump_pa_map_ *pa_map, uint8_t *filtered_path, uint8_t *nexthop)
-{
-  uint8_t *fp;
+bgpdump_filter_bgp_pa_copy_nh(
+    struct bgpdump_pa_map_ *pa_map, uint8_t *filtered_path, uint8_t *nexthop
+) {
+    uint8_t *fp;
 
-  fp = filtered_path;
+    fp = filtered_path;
 
-  /* Copy the known PAs */
-  bgpdump_copy_pa(pa_map, ORIGIN, &fp);
-  bgpdump_copy_pa(pa_map, NEXT_HOP, &fp);
-  bgpdump_copy_pa(pa_map, AS_PATH, &fp);
-  bgpdump_copy_pa(pa_map, MULTI_EXIT_DISC, &fp);
-  bgpdump_copy_pa(pa_map, LOCAL_PREF, &fp);
-  bgpdump_copy_pa(pa_map, ATOMIC_AGGREGATE, &fp);
-  bgpdump_copy_pa(pa_map, AGGREGATOR, &fp);
-  bgpdump_copy_pa(pa_map, COMMUNITY, &fp);
-  bgpdump_copy_pa(pa_map, EXTENDED_COMMUNITY, &fp);
-  bgpdump_copy_pa(pa_map, LARGE_COMMUNITY, &fp);
+    /* Copy the known PAs */
+    bgpdump_copy_pa(pa_map, ORIGIN, &fp);
+    bgpdump_copy_pa(pa_map, NEXT_HOP, &fp);
+    bgpdump_copy_pa(pa_map, AS_PATH, &fp);
+    bgpdump_copy_pa(pa_map, MULTI_EXIT_DISC, &fp);
+    bgpdump_copy_pa(pa_map, LOCAL_PREF, &fp);
+    bgpdump_copy_pa(pa_map, ATOMIC_AGGREGATE, &fp);
+    bgpdump_copy_pa(pa_map, AGGREGATOR, &fp);
+    bgpdump_copy_pa(pa_map, COMMUNITY, &fp);
+    bgpdump_copy_pa(pa_map, EXTENDED_COMMUNITY, &fp);
+    bgpdump_copy_pa(pa_map, LARGE_COMMUNITY, &fp);
 
-  if (bgpdump_get_pa_bit(pa_map, MP_REACH_NLRI)) {
+    if (bgpdump_get_pa_bit(pa_map, MP_REACH_NLRI)) {
 
-    uint8_t pa_flags, nh_len;
-    uint8_t *buffer;
+        uint8_t pa_flags, nh_len;
+        uint8_t *buffer;
 
-    /*
-     * Extract the nexthop.
-     */
-    buffer = pa_map->pa_start[MP_REACH_NLRI];
+        /*
+         * Extract the nexthop.
+         */
+        buffer = pa_map->pa_start[MP_REACH_NLRI];
 
-    pa_flags = *buffer;
-    if (pa_flags & 0x10) { /* extended length ? */
-      buffer += 4;
-    } else {
-      buffer += 3;
+        pa_flags = *buffer;
+        if (pa_flags & 0x10) { /* extended length ? */
+            buffer += 4;
+        } else {
+            buffer += 3;
+        }
+
+        nh_len = *(buffer + 3);
+        buffer += 4;
+        memcpy(nexthop, buffer, nh_len);
     }
 
-    nh_len = *(buffer+3);
-    buffer += 4;
-    memcpy(nexthop, buffer, nh_len);
-  }
-
-  return fp - filtered_path;
+    return fp - filtered_path;
 }
 
-
 uint16_t
-bgpdump_filter_bgp_pa_trim_nh (struct bgpdump_pa_map_ *pa_map, uint8_t *filtered_path)
-{
-  uint8_t *fp;
+bgpdump_filter_bgp_pa_trim_nh(
+    struct bgpdump_pa_map_ *pa_map, uint8_t *filtered_path
+) {
+    uint8_t *fp;
 
-  fp = filtered_path;
+    fp = filtered_path;
 
-  /* Copy the known PAs */
-  bgpdump_copy_pa(pa_map, ORIGIN, &fp);
-  bgpdump_copy_pa(pa_map, NEXT_HOP, &fp);
-  bgpdump_copy_pa(pa_map, AS_PATH, &fp);
-  bgpdump_copy_pa(pa_map, MULTI_EXIT_DISC, &fp);
-  bgpdump_copy_pa(pa_map, LOCAL_PREF, &fp);
-  bgpdump_copy_pa(pa_map, ATOMIC_AGGREGATE, &fp);
-  bgpdump_copy_pa(pa_map, AGGREGATOR, &fp);
-  bgpdump_copy_pa(pa_map, COMMUNITY, &fp);
-  bgpdump_copy_pa(pa_map, EXTENDED_COMMUNITY, &fp);
-  bgpdump_copy_pa(pa_map, LARGE_COMMUNITY, &fp);
+    /* Copy the known PAs */
+    bgpdump_copy_pa(pa_map, ORIGIN, &fp);
+    bgpdump_copy_pa(pa_map, NEXT_HOP, &fp);
+    bgpdump_copy_pa(pa_map, AS_PATH, &fp);
+    bgpdump_copy_pa(pa_map, MULTI_EXIT_DISC, &fp);
+    bgpdump_copy_pa(pa_map, LOCAL_PREF, &fp);
+    bgpdump_copy_pa(pa_map, ATOMIC_AGGREGATE, &fp);
+    bgpdump_copy_pa(pa_map, AGGREGATOR, &fp);
+    bgpdump_copy_pa(pa_map, COMMUNITY, &fp);
+    bgpdump_copy_pa(pa_map, EXTENDED_COMMUNITY, &fp);
+    bgpdump_copy_pa(pa_map, LARGE_COMMUNITY, &fp);
 
-  if (bgpdump_get_pa_bit(pa_map, MP_REACH_NLRI)) {
+    if (bgpdump_get_pa_bit(pa_map, MP_REACH_NLRI)) {
 
-    uint16_t afi;
-    uint8_t safi, pa_flags, nh_len;
-    uint8_t *buffer;
+        uint16_t afi;
+        uint8_t safi, pa_flags, nh_len;
+        uint8_t *buffer;
 
-    /*
-     * Truncate the NLRI by copying the nexthop.
-     */
-    buffer = pa_map->pa_start[MP_REACH_NLRI];
+        /*
+         * Truncate the NLRI by copying the nexthop.
+         */
+        buffer = pa_map->pa_start[MP_REACH_NLRI];
 
-    pa_flags = *buffer;
-    if (pa_flags & 0x10) { /* extended length ? */
-      buffer += 4;
-    } else {
-      buffer += 3;
+        pa_flags = *buffer;
+        if (pa_flags & 0x10) { /* extended length ? */
+            buffer += 4;
+        } else {
+            buffer += 3;
+        }
+
+        afi = *buffer << 8 | *(buffer + 1);
+        safi = *(buffer + 2);
+        nh_len = *(buffer + 3);
+        buffer += 4;
+
+        *fp++ = pa_flags | 0x10; /* extended length */
+        *fp++ = MP_REACH_NLRI;
+        *fp++ = 0;
+        *fp++ = 4 + nh_len; /* PA length */
+        *fp++ = 0;
+        *fp++ = afi;
+        *fp++ = safi;
+        *fp++ = nh_len;
+        memcpy(fp, buffer, nh_len);
+        fp += nh_len;
     }
 
-    afi = *buffer << 8 | *(buffer+1);
-    safi = *(buffer+2);
-    nh_len = *(buffer+3);
-    buffer += 4;
-
-    *fp++ = pa_flags | 0x10; /* extended length */
-    *fp++ = MP_REACH_NLRI;
-    *fp++ = 0;
-    *fp++ = 4 + nh_len; /* PA length */
-    *fp++ = 0;
-    *fp++ = afi;
-    *fp++ = safi;
-    *fp++ = nh_len;
-    memcpy(fp, buffer, nh_len);
-    fp += nh_len;
-  }
-
-  return fp - filtered_path;
+    return fp - filtered_path;
 }
 
 void
-bgpdump_add_prefix (struct bgp_route *route, int index, char *raw_path, uint16_t path_length)
-{
-  struct bgp_path_ *bgp_path;
-  struct ptree_node *bgp_path_node;
-  struct bgp_prefix_ *bgp_prefix;
-  struct bgpdump_pa_map_ pa_map;
-  uint16_t filtered_path_length;
-  uint8_t filtered_path[4096];
+bgpdump_add_prefix(
+    struct bgp_route *route, int index, char *raw_path, uint16_t path_length
+) {
+    struct bgp_path_ *bgp_path;
+    struct ptree_node *bgp_path_node;
+    struct bgp_prefix_ *bgp_prefix;
+    struct bgpdump_pa_map_ pa_map;
+    uint16_t filtered_path_length;
+    uint8_t filtered_path[4096];
 
-  /*
-   * First index the path attributes. We may need to filter the prefix list in MP_REACH_NLRI PA.
-   */
-  bgpdump_index_bgp_pa(&pa_map, (uint8_t *)raw_path, path_length);
-  filtered_path_length = bgpdump_filter_bgp_pa_trim_nh(&pa_map, filtered_path);
-  if (!filtered_path_length) {
-    return;
-  }
-
-  /*
-   * Check first if the path-attributes are known.
-   */
-  bgp_path_node = ptree_search((char *)filtered_path, filtered_path_length * 8, peer_table[index].path_root);
-
-  if (!bgp_path_node) {
-
+    /*
+     * First index the path attributes. We may need to filter the prefix list in
+     * MP_REACH_NLRI PA.
+     */
+    bgpdump_index_bgp_pa(&pa_map, (uint8_t *)raw_path, path_length);
+    filtered_path_length =
+        bgpdump_filter_bgp_pa_trim_nh(&pa_map, filtered_path);
     if (!filtered_path_length) {
-      return;
-    }
-
-    bgp_path = calloc(1, sizeof(struct bgp_path_));
-    if (!bgp_path) {
-      return;
+        return;
     }
 
     /*
-     * Add fresh BGP path to the tree.
+     * Check first if the path-attributes are known.
      */
-    if (route->label) {
-      bgp_path->safi = 4; /* labeled-unicast */
+    bgp_path_node = ptree_search(
+        (char *)filtered_path,
+        filtered_path_length * 8,
+        peer_table[index].path_root
+    );
+
+    if (!bgp_path_node) {
+
+        if (!filtered_path_length) {
+            return;
+        }
+
+        bgp_path = calloc(1, sizeof(struct bgp_path_));
+        if (!bgp_path) {
+            return;
+        }
+
+        /*
+         * Add fresh BGP path to the tree.
+         */
+        if (route->label) {
+            bgp_path->safi = 4; /* labeled-unicast */
+        } else {
+            bgp_path->safi = 1; /* unicast */
+        }
+        bgp_path->af = qaf;
+        bgp_path->pnode = ptree_add(
+            (char *)filtered_path,
+            filtered_path_length * 8,
+            bgp_path,
+            peer_table[index].path_root
+        );
+        if (bgp_path->pnode) {
+            peer_table[index].path_count++;
+        }
+        bgp_path->path_length = filtered_path_length;
+        CIRCLEQ_INIT(&bgp_path->path_qhead);
     } else {
-      bgp_path->safi = 1; /* unicast */
+        bgp_path = bgp_path_node->data;
     }
-    bgp_path->af = qaf;
-    bgp_path->pnode = ptree_add((char *)filtered_path, filtered_path_length * 8, bgp_path,
-				peer_table[index].path_root);
-    if (bgp_path->pnode) {
-      peer_table[index].path_count++;
-    }
-    bgp_path->path_length = filtered_path_length;
-    CIRCLEQ_INIT(&bgp_path->path_qhead);
-  } else {
-    bgp_path = bgp_path_node->data;
-  }
 
-  bgp_prefix = calloc(1, sizeof(struct bgp_prefix_));
-  memcpy(&bgp_prefix->prefix, &route->prefix, (route->prefix_length + 7) / 8);
-  bgp_prefix->prefix_length = route->prefix_length;
-  bgp_prefix->label = route->label;
-  bgp_prefix->index = index;
+    bgp_prefix = calloc(1, sizeof(struct bgp_prefix_));
+    memcpy(&bgp_prefix->prefix, &route->prefix, (route->prefix_length + 7) / 8);
+    bgp_prefix->prefix_length = route->prefix_length;
+    bgp_prefix->label = route->label;
+    bgp_prefix->index = index;
 
-  if (bgp_path->af == AF_INET) {
-    bgp_prefix->pnode = ptree_add(route->prefix, route->prefix_length,
-				  bgp_prefix, peer_table[index].ipv4_root);
-    if (bgp_prefix->pnode) {
-      peer_table[index].ipv4_count++;
+    if (bgp_path->af == AF_INET) {
+        bgp_prefix->pnode = ptree_add(
+            route->prefix,
+            route->prefix_length,
+            bgp_prefix,
+            peer_table[index].ipv4_root
+        );
+        if (bgp_prefix->pnode) {
+            peer_table[index].ipv4_count++;
+        }
+    } else if (bgp_path->af == AF_INET6) {
+        bgp_prefix->pnode = ptree_add(
+            route->prefix,
+            route->prefix_length,
+            bgp_prefix,
+            peer_table[index].ipv6_root
+        );
+        if (bgp_prefix->pnode) {
+            peer_table[index].ipv6_count++;
+        }
     }
-  } else if (bgp_path->af == AF_INET6) {
-    bgp_prefix->pnode = ptree_add(route->prefix, route->prefix_length,
-				  bgp_prefix, peer_table[index].ipv6_root);
-    if (bgp_prefix->pnode) {
-      peer_table[index].ipv6_count++;
-    }
-  }
-  CIRCLEQ_INSERT_TAIL(&bgp_path->path_qhead, bgp_prefix, prefix_qnode);
-  bgp_prefix->path = bgp_path;
-  bgp_path->refcount++;
+    CIRCLEQ_INSERT_TAIL(&bgp_path->path_qhead, bgp_prefix, prefix_qnode);
+    bgp_prefix->path = bgp_path;
+    bgp_path->refcount++;
 }
 
 void
-bgpdump_process_table_v2_rib_entry (int index, char **q,
-                                    struct mrt_info *info,
-                                    char *data_end)
-{
-  char *p = *q;
-  int size;
+bgpdump_process_table_v2_rib_entry(
+    int index, char **q, struct mrt_info *info, char *data_end
+) {
+    char *p = *q;
+    int size;
 
-  uint32_t originated_time;
-  uint16_t attribute_length;
+    uint32_t originated_time;
+    uint16_t attribute_length;
 
-  int peer_match, i;
+    int peer_match, i;
 
-  size = sizeof (peer_index);
-  BUFFER_OVERRUN_CHECK(p, size, data_end)
-  peer_index = ntohs (*(uint16_t *)p);
-  p += size;
+    size = sizeof(peer_index);
+    BUFFER_OVERRUN_CHECK(p, size, data_end)
+    peer_index = ntohs(*(uint16_t *)p);
+    p += size;
 
-  size = sizeof (originated_time);
-  BUFFER_OVERRUN_CHECK(p, size, data_end)
-  originated_time = ntohl (*(uint32_t *)p);
-  p += size;
+    size = sizeof(originated_time);
+    BUFFER_OVERRUN_CHECK(p, size, data_end)
+    originated_time = ntohl(*(uint32_t *)p);
+    p += size;
 
-  size = sizeof (attribute_length);
-  BUFFER_OVERRUN_CHECK(p, size, data_end)
-  attribute_length = ntohs (*(uint16_t *)p);
-  p += size;
+    size = sizeof(attribute_length);
+    BUFFER_OVERRUN_CHECK(p, size, data_end)
+    attribute_length = ntohs(*(uint16_t *)p);
+    p += size;
 
-  int peer_spec_i = 0;
-  peer_match = 0;
-  for (i = 0; i < MIN(peer_spec_size, PEER_INDEX_MAX); i++)
-    {
-      if (peer_index == peer_spec_index[i])
-        {
-          peer_spec_i = i;
-          peer_match++;
+    int peer_spec_i = 0;
+    peer_match = 0;
+    for (i = 0; i < MIN(peer_spec_size, PEER_INDEX_MAX); i++) {
+        if (peer_index == peer_spec_index[i]) {
+            peer_spec_i = i;
+            peer_match++;
         }
     }
 
-  if (peer_spec_size && debug)
-    printf ("peer_index: %d, peer_match: %d\n", peer_index, peer_match);
+    if (peer_spec_size && debug)
+        printf("peer_index: %d, peer_match: %d\n", peer_index, peer_match);
 
-  if (! peer_spec_size || peer_match)
-    {
-      if (show && (debug || detail))
-        printf ("rib[%d]: peer[%d] originated_time: %lu attribute_length: %d\n",
-                index, peer_index, (unsigned long) originated_time,
-                attribute_length);
+    if (!peer_spec_size || peer_match) {
+        if (show && (debug || detail))
+            printf(
+                "rib[%d]: peer[%d] originated_time: %lu attribute_length: %d\n",
+                index,
+                peer_index,
+                (unsigned long)originated_time,
+                attribute_length
+            );
 
-      if (peer_index < PEER_MAX)
-        {
-          if (route_count)
-            peer_table[peer_index].route_count++;
+        if (peer_index < PEER_MAX) {
+            if (route_count)
+                peer_table[peer_index].route_count++;
 
-          if (plen_dist)
-            peer_table[peer_index].route_count_by_plen[prefix_length]++;
+            if (plen_dist)
+                peer_table[peer_index].route_count_by_plen[prefix_length]++;
         }
 
-      struct bgp_route route;
+        struct bgp_route route;
 
-      memset (&route, 0, sizeof (route));
-      memcpy (route.prefix, prefix, (prefix_length + 7) / 8);
-      route.prefix_length = prefix_length;
-      route.label = label;
+        memset(&route, 0, sizeof(route));
+        memcpy(route.prefix, prefix, (prefix_length + 7) / 8);
+        route.prefix_length = prefix_length;
+        route.label = label;
 
-      if ((brief || show || lookup || udiff || stats ||
-	   compat_mode || autsiz || heatmap) && (!blaster || !blaster_dump)) {
-        bgpdump_process_bgp_attributes (&route, p, p + attribute_length);
-      }
+        if ((brief || show || lookup || udiff || stats || compat_mode ||
+             autsiz || heatmap) &&
+            (!blaster || !blaster_dump)) {
+            bgpdump_process_bgp_attributes(&route, p, p + attribute_length);
+        }
 
-      /*
-       * For the blaster add the prefix and the path attributes to the peer-RIB.
-       */
-      if (blaster || blaster_dump) {
+        /*
+         * For the blaster add the prefix and the path attributes to the
+         * peer-RIB.
+         */
+        if (blaster || blaster_dump) {
 
-	uint32_t count;
+            uint32_t count;
 
-	/* next hop rewrite ? */
-	if (nhs) {
-	  bgpdump_rewrite_nh((uint8_t *)p, attribute_length);
-	}
-
-	count = MAX(peer_table[peer_index].ipv4_count, peer_table[peer_index].ipv6_count);
-	if (prefix_limit && count < prefix_limit) {
-	  bgpdump_add_prefix(&route, peer_index, p, attribute_length);
-	} else if (!prefix_limit) {
-	  bgpdump_add_prefix(&route, peer_index, p, attribute_length);
-	}
-      }
-
-      /* Now all the BGP attributes for this rib_entry are processed. */
-
-      if (stats)
-        {
-          int i, peer_match = 0;
-
-          if (peer_spec_size == 0)
-            peer_match++;
-          else
-            {
-              for (i = 0; i < peer_spec_size; i++)
-                if (peer_index == peer_spec_index[i])
-                  peer_match++;
+            /* next hop rewrite ? */
+            if (nhs) {
+                bgpdump_rewrite_nh((uint8_t *)p, attribute_length);
             }
 
-          if (peer_match)
-            {
-              //printf ("peer_stat_save: peer: %d\n", peer_index);
-              peer_stat_save (peer_index, &route);
+            count =
+                MAX(peer_table[peer_index].ipv4_count,
+                    peer_table[peer_index].ipv6_count);
+            if (prefix_limit && count < prefix_limit) {
+                bgpdump_add_prefix(&route, peer_index, p, attribute_length);
+            } else if (!prefix_limit) {
+                bgpdump_add_prefix(&route, peer_index, p, attribute_length);
+            }
+        }
+
+        /* Now all the BGP attributes for this rib_entry are processed. */
+
+        if (stats) {
+            int i, peer_match = 0;
+
+            if (peer_spec_size == 0)
+                peer_match++;
+            else {
+                for (i = 0; i < peer_spec_size; i++)
+                    if (peer_index == peer_spec_index[i])
+                        peer_match++;
+            }
+
+            if (peer_match) {
+                // printf ("peer_stat_save: peer: %d\n", peer_index);
+                peer_stat_save(peer_index, &route, prefix_length);
             }
         }
 
@@ -1215,114 +1252,116 @@ bgpdump_process_table_v2_rib_entry (int index, char **q,
         }
 #else
 
-      if (peer_spec_size && (!blaster && !blaster_dump))
-        {
-          struct bgp_route *rp;
-          int *route_size = &peer_route_size[peer_spec_i];
-          if (*route_size >= nroutes)
-            {
-              printf ("route table overflow.\n");
-              *route_size = nroutes - 1;
+        if (peer_spec_size && (!blaster && !blaster_dump)) {
+            struct bgp_route *rp;
+            int *route_size = &peer_route_size[peer_spec_i];
+            if (*route_size >= nroutes) {
+                printf("route table overflow.\n");
+                *route_size = nroutes - 1;
             }
 
-          struct bgp_route *rpp;
-          rpp = peer_route_table[peer_spec_i];
-          rp = &rpp[sequence_number];
-          //rp = &peer_route_table[peer_index][sequence_number];
-          *route_size = *route_size + 1;
-          //(*route_size)++;
+            struct bgp_route *rpp;
+            rpp = peer_route_table[peer_spec_i];
+            rp = &rpp[sequence_number];
+            // rp = &peer_route_table[peer_index][sequence_number];
+            *route_size = *route_size + 1;
+            //(*route_size)++;
 
-          //route_print (&route);
-          memcpy (rp, &route, sizeof (struct bgp_route));
+            // route_print (&route);
+            memcpy(rp, &route, sizeof(struct bgp_route));
 
-          if (qaf == AF_INET)
-            ptree_add ((char *)&rp->prefix, rp->prefix_length,
-                       (void *)rp, peer_ptree[peer_spec_i]);
+            if (qaf == AF_INET)
+                ptree_add(
+                    (char *)&rp->prefix,
+                    rp->prefix_length,
+                    (void *)rp,
+                    peer_ptree[peer_spec_i]
+                );
         }
 #endif
 
-      if (udiff)
-        {
-          for (i = 0; i < MIN (peer_spec_size, 2); i++)
-            {
-              if (peer_spec_index[i] == peer_index)
-                {
-                  diff_table[i][sequence_number] = route;
-                  if (udiff_lookup)
-                    ptree_add ((char *)&route.prefix, route.prefix_length,
-                               (void *)&diff_table[i][sequence_number],
-                               diff_ptree[i]);
+        if (udiff) {
+            for (i = 0; i < MIN(peer_spec_size, 2); i++) {
+                if (peer_spec_index[i] == peer_index) {
+                    diff_table[i][sequence_number] = route;
+                    if (udiff_lookup)
+                        ptree_add(
+                            (char *)&route.prefix,
+                            route.prefix_length,
+                            (void *)&diff_table[i][sequence_number],
+                            diff_ptree[i]
+                        );
                 }
             }
         }
 
-      if (brief && !quiet)
-        route_print_brief (&route);
-      else if (show && !quiet)
-        route_print (&route);
-      else if (compat_mode && !quiet)
-        route_print_compat (&route);
+        if (brief && !quiet)
+            route_print_brief(&route);
+        else if (show && !quiet)
+            route_print(&route);
+        else if (compat_mode && !quiet)
+            route_print_compat(&route);
     }
 
-  BUFFER_OVERRUN_CHECK(p, attribute_length, data_end)
-  p += attribute_length;
+    BUFFER_OVERRUN_CHECK(p, attribute_length, data_end)
+    p += attribute_length;
 
-  *q = p;
+    *q = p;
 }
 
 void
-bgpdump_process_table_v2_rib_unicast (struct mrt_header *h,
-                                      struct mrt_info *info,
-                                      char *data_end)
-{
-  char *p;
-  int size;
-  int i;
+bgpdump_process_table_v2_rib_unicast(
+    struct mrt_header *h, struct mrt_info *info, char *data_end
+) {
+    char *p;
+    int size;
+    int i;
 
-  uint32_t prefix_size;
-  uint16_t entry_count;
+    uint32_t prefix_size;
+    uint16_t entry_count;
 
-  p = (char *)h + sizeof (struct mrt_header);
+    p = (char *)h + sizeof(struct mrt_header);
 
-  size = sizeof (sequence_number);
-  BUFFER_OVERRUN_CHECK(p, size, data_end)
-  sequence_number = ntohl (*(uint32_t *)p);
-  p += size;
+    size = sizeof(sequence_number);
+    BUFFER_OVERRUN_CHECK(p, size, data_end)
+    sequence_number = ntohl(*(uint32_t *)p);
+    p += size;
 
-  size = sizeof (prefix_length);
-  BUFFER_OVERRUN_CHECK(p, size, data_end)
-  prefix_length = *(uint8_t *)p;
-  p += size;
+    size = sizeof(prefix_length);
+    BUFFER_OVERRUN_CHECK(p, size, data_end)
+    prefix_length = *(uint8_t *)p;
+    p += size;
 
-  prefix_size = ((prefix_length + 7) / 8);
-  size = prefix_size;
-  BUFFER_OVERRUN_CHECK(p, size, data_end)
-  memset (prefix, 0, sizeof (prefix));
-  memcpy (prefix, p, prefix_size);
-  p += size;
+    prefix_size = ((prefix_length + 7) / 8);
+    size = prefix_size;
+    BUFFER_OVERRUN_CHECK(p, size, data_end)
+    memset(prefix, 0, sizeof(prefix));
+    memcpy(prefix, p, prefix_size);
+    p += size;
 
-  size = sizeof (entry_count);
-  BUFFER_OVERRUN_CHECK(p, size, data_end)
-  entry_count = ntohs (*(uint16_t *)p);
-  p += size;
+    size = sizeof(entry_count);
+    BUFFER_OVERRUN_CHECK(p, size, data_end)
+    entry_count = ntohs(*(uint16_t *)p);
+    p += size;
 
-  if (show && debug)
-    {
-      char pbuf[64];
-      inet_ntop (qaf, prefix, pbuf, sizeof (pbuf));
-      printf ("Sequence Number: %lu Prefix %s/%d Entry Count: %d\n",
-              (unsigned long) sequence_number,
-              pbuf, prefix_length, entry_count);
+    if (show && debug) {
+        char pbuf[64];
+        inet_ntop(qaf, prefix, pbuf, sizeof(pbuf));
+        printf(
+            "Sequence Number: %lu Prefix %s/%d Entry Count: %d\n",
+            (unsigned long)sequence_number,
+            pbuf,
+            prefix_length,
+            entry_count
+        );
     }
 
-  for (i = 0; i < entry_count && p < data_end; i++)
-    {
-      bgpdump_process_table_v2_rib_entry (i, &p, info, data_end);
+    for (i = 0; i < entry_count && p < data_end; i++) {
+        bgpdump_process_table_v2_rib_entry(i, &p, info, data_end);
     }
 
-  if (udiff)
-    {
-      bgpdump_udiff_compare (sequence_number);
+    if (udiff) {
+        bgpdump_udiff_compare(sequence_number);
 
 #if 0
       struct bgp_route *route;
@@ -1468,120 +1507,119 @@ bgpdump_process_table_v2_rib_unicast (struct mrt_header *h,
             }
         }
 #endif /*0*/
-
     }
 }
 
 void
-bgpdump_process_table_v2_rib_generic (struct mrt_header *h,
-                                      struct mrt_info *info,
-                                      char *data_end)
-{
-  char *p;
-  int size;
-  int i;
+bgpdump_process_table_v2_rib_generic(
+    struct mrt_header *h, struct mrt_info *info, char *data_end
+) {
+    char *p;
+    int size;
+    int i;
 
-  uint32_t prefix_size;
-  uint16_t entry_count;
-  uint16_t afi;
-  uint8_t safi;
+    uint32_t prefix_size;
+    uint16_t entry_count;
+    uint16_t afi;
+    uint8_t safi;
 
-  p = (char *)h + sizeof (struct mrt_header);
+    p = (char *)h + sizeof(struct mrt_header);
 
-  size = sizeof (sequence_number);
-  BUFFER_OVERRUN_CHECK(p, size, data_end);
-  sequence_number = ntohl (*(uint32_t *)p);
-  p += size;
-
-  size = sizeof(afi) + sizeof(safi);
-  BUFFER_OVERRUN_CHECK(p, size, data_end);
-  afi = ntohs(*(uint16_t *)p);
-  safi = *(uint8_t *)(p+2);
-  p += size;
-
-  /*
-   * Sanity checks.
-   */
-  if (qaf == AF_INET && afi != 1) {
-    return;
-  }
-  if (qaf == AF_INET6 && afi != 2) {
-    return;
-  }
-
-  size = sizeof (prefix_length);
-  BUFFER_OVERRUN_CHECK(p, size, data_end);
-  if (safi == 4) {
-    prefix_length = *(uint8_t *)p - 24;
-  } else {
-    prefix_length = *(uint8_t *)p;
-  }
-  p += size;
-
-  label = 0;
-  if (safi == 4) {
-    size = 3; /* 3 byte per label */
+    size = sizeof(sequence_number);
     BUFFER_OVERRUN_CHECK(p, size, data_end);
-    label = *(uint8_t *)p << 16 | *(uint8_t *)(p+1) << 8 | *(uint8_t *)(p+2);
-    label = label >> 4;
+    sequence_number = ntohl(*(uint32_t *)p);
     p += size;
-  }
 
-  prefix_size = ((prefix_length + 7) / 8);
-  size = prefix_size;
-  BUFFER_OVERRUN_CHECK(p, size, data_end);
-  memset (prefix, 0, sizeof (prefix));
-  memcpy (prefix, p, prefix_size);
-  p += size;
+    size = sizeof(afi) + sizeof(safi);
+    BUFFER_OVERRUN_CHECK(p, size, data_end);
+    afi = ntohs(*(uint16_t *)p);
+    safi = *(uint8_t *)(p + 2);
+    p += size;
 
-  size = sizeof (entry_count);
-  BUFFER_OVERRUN_CHECK(p, size, data_end);
-  entry_count = ntohs (*(uint16_t *)p);
-  p += size;
+    /*
+     * Sanity checks.
+     */
+    if (qaf == AF_INET && afi != 1) {
+        return;
+    }
+    if (qaf == AF_INET6 && afi != 2) {
+        return;
+    }
 
-  if (show && debug) {
-    char pbuf[64];
-    inet_ntop (qaf, prefix, pbuf, sizeof (pbuf));
-    printf ("Sequence Number: %lu Prefix %s/%d Entry Count: %d\n",
-	    (unsigned long) sequence_number,
-	    pbuf, prefix_length, entry_count);
-  }
+    size = sizeof(prefix_length);
+    BUFFER_OVERRUN_CHECK(p, size, data_end);
+    if (safi == 4) {
+        prefix_length = *(uint8_t *)p - 24;
+    } else {
+        prefix_length = *(uint8_t *)p;
+    }
+    p += size;
 
-  for (i = 0; i < entry_count && p < data_end; i++) {
-    bgpdump_process_table_v2_rib_entry (i, &p, info, data_end);
-  }
+    label = 0;
+    if (safi == 4) {
+        size = 3; /* 3 byte per label */
+        BUFFER_OVERRUN_CHECK(p, size, data_end);
+        label = *(uint8_t *)p << 16 | *(uint8_t *)(p + 1) << 8 |
+                *(uint8_t *)(p + 2);
+        label = label >> 4;
+        p += size;
+    }
+
+    prefix_size = ((prefix_length + 7) / 8);
+    size = prefix_size;
+    BUFFER_OVERRUN_CHECK(p, size, data_end);
+    memset(prefix, 0, sizeof(prefix));
+    memcpy(prefix, p, prefix_size);
+    p += size;
+
+    size = sizeof(entry_count);
+    BUFFER_OVERRUN_CHECK(p, size, data_end);
+    entry_count = ntohs(*(uint16_t *)p);
+    p += size;
+
+    if (show && debug) {
+        char pbuf[64];
+        inet_ntop(qaf, prefix, pbuf, sizeof(pbuf));
+        printf(
+            "Sequence Number: %lu Prefix %s/%d Entry Count: %d\n",
+            (unsigned long)sequence_number,
+            pbuf,
+            prefix_length,
+            entry_count
+        );
+    }
+
+    for (i = 0; i < entry_count && p < data_end; i++) {
+        bgpdump_process_table_v2_rib_entry(i, &p, info, data_end);
+    }
 }
 
 void
-bgpdump_process_table_dump_v2 (struct mrt_header *h, struct mrt_info *info,
-                               char *data_end)
-{
-  switch (info->subtype)
-    {
+bgpdump_process_table_dump_v2(
+    struct mrt_header *h, struct mrt_info *info, char *data_end
+) {
+    switch (info->subtype) {
     case BGPDUMP_TABLE_V2_PEER_INDEX_TABLE:
-      bgpdump_process_table_v2_peer_index_table (h, info, data_end);
-      break;
+        bgpdump_process_table_v2_peer_index_table(h, info, data_end);
+        break;
     case BGPDUMP_TABLE_V2_RIB_IPV4_UNICAST:
-      if (! peer_table_only && qaf == AF_INET )
-        {
-          bgpdump_process_table_v2_rib_unicast (h, info, data_end);
+        if (!peer_table_only && qaf == AF_INET) {
+            bgpdump_process_table_v2_rib_unicast(h, info, data_end);
         }
-      break;
+        break;
     case BGPDUMP_TABLE_V2_RIB_IPV6_UNICAST:
-      if (! peer_table_only && qaf == AF_INET6 )
-        {
-          bgpdump_process_table_v2_rib_unicast (h, info, data_end);
+        if (!peer_table_only && qaf == AF_INET6) {
+            bgpdump_process_table_v2_rib_unicast(h, info, data_end);
         }
-      break;
+        break;
     case BGPDUMP_TABLE_V2_RIB_GENERIC:
-      if (! peer_table_only)
-        {
-          bgpdump_process_table_v2_rib_generic (h, info, data_end);
+        if (!peer_table_only) {
+            bgpdump_process_table_v2_rib_generic(h, info, data_end);
         }
-      break;
+        break;
     default:
-      printf ("unsupported subtype: %d\n", info->subtype);
-      break;
+        printf("unsupported subtype: %d\n", info->subtype);
+        break;
     }
 }
 

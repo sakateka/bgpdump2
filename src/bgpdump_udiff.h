@@ -19,8 +19,9 @@
 #ifndef _BGPDUMP_UDIFF_H_
 #define _BGPDUMP_UDIFF_H_
 
+#include <stdint.h>
+
 void
-bgpdump_udiff_compare (uint32_t sequence_number);
+bgpdump_udiff_compare(uint32_t sequence_number);
 
 #endif /*_BGPDUMP_UDIFF_H_*/
-

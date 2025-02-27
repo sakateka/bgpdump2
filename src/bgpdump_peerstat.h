@@ -19,23 +19,27 @@
 #ifndef _BGPDUMP_PEER_STAT_H_
 #define _BGPDUMP_PEER_STAT_H_
 
-struct peer_stat
-{
-  uint64_t route_count;
-  //uint64_t route_count_by_plen[33];
-  uint64_t route_count_by_plen[129];
-  struct ptree *nexthop_count;
-  struct ptree *origin_as_count;
-  struct ptree *as_path_count;
-  struct ptree *as_path_len_count;
+#include <stdint.h>
+
+struct peer_stat {
+    uint64_t route_count;
+    // uint64_t route_count_by_plen[33];
+    uint64_t route_count_by_plen[129];
+    struct ptree *nexthop_count;
+    struct ptree *origin_as_count;
+    struct ptree *as_path_count;
+    struct ptree *as_path_len_count;
 };
 
 extern struct peer_stat peer_stat[];
 
-void peer_stat_init ();
-void peer_stat_finish ();
-void peer_stat_save (int peer_index, struct bgp_route *route);
-void peer_stat_show ();
+void
+peer_stat_init();
+void
+peer_stat_finish();
+void
+peer_stat_save(int peer_index, struct bgp_route *route, uint8_t prefix_length);
+void
+peer_stat_show();
 
 #endif /*_BGPDUMP_PEER_STAT_H_*/
-

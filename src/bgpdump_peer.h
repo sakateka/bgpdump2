@@ -19,20 +19,21 @@
 #ifndef _BGPDUMP_PEER_H_
 #define _BGPDUMP_PEER_H_
 
-struct peer
-{
-  struct in_addr bgp_id;
-  struct in_addr ipv4_addr;
-  struct in6_addr ipv6_addr;
-  uint32_t asnumber;
-  uint64_t route_count;
-  uint64_t route_count_by_plen[33];
-  struct ptree *ipv4_root;
-  struct ptree *ipv6_root;
-  struct ptree *path_root;
-  uint32_t ipv4_count;
-  uint32_t ipv6_count;
-  uint32_t path_count;
+#include <netinet/in.h>
+
+struct peer {
+    struct in_addr bgp_id;
+    struct in_addr ipv4_addr;
+    struct in6_addr ipv6_addr;
+    uint32_t asnumber;
+    uint64_t route_count;
+    uint64_t route_count_by_plen[33];
+    struct ptree *ipv4_root;
+    struct ptree *ipv6_root;
+    struct ptree *path_root;
+    uint32_t ipv4_count;
+    uint32_t ipv6_count;
+    uint32_t path_count;
 };
 
 #define PEER_MAX 256
@@ -50,12 +51,17 @@ extern struct bgp_route *peer_route_table[];
 extern int peer_route_size[];
 extern struct ptree *peer_ptree[];
 
-void peer_table_init ();
-void peer_print (struct peer *peer);
-void peer_route_count_show ();
-void peer_route_count_clear ();
-void peer_route_count_by_plen_show ();
-void peer_route_count_by_plen_clear ();
+void
+peer_table_init();
+void
+peer_print(struct peer *peer);
+void
+peer_route_count_show();
+void
+peer_route_count_clear();
+void
+peer_route_count_by_plen_show();
+void
+peer_route_count_by_plen_clear();
 
 #endif /*_BGPDUMP_PEER_H_*/
-

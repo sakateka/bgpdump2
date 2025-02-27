@@ -17,91 +17,83 @@
  */
 
 #include <stdio.h>
-#include <string.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
 unsigned long long
-resolv_number (char *notation, char **endptr)
-{
-  unsigned long long number, unit;
-  char digits[64];
-  unsigned long digit;
-  int len;
-  char *p;
+resolv_number(char *notation, char **endptr) {
+    unsigned long long number, unit;
+    char digits[64];
+    unsigned long digit;
+    int len;
+    char *p;
 
-  snprintf (digits, sizeof (digits), "%s", notation);
-  len = strlen (digits);
+    snprintf(digits, sizeof(digits), "%s", notation);
+    len = strlen(digits);
 
-  unit = 1;
-  if (len > 3)
-    {
-      p = strstr (digits, "KiB");
-      if (! p)
-        p = strstr (digits, "MiB");
-      if (! p)
-        p = strstr (digits, "GiB");
-      if (! p)
-        p = strstr (digits, "TiB");
-      if (p)
-        {
-          switch (*p)
-            {
+    unit = 1;
+    if (len > 3) {
+        p = strstr(digits, "KiB");
+        if (!p)
+            p = strstr(digits, "MiB");
+        if (!p)
+            p = strstr(digits, "GiB");
+        if (!p)
+            p = strstr(digits, "TiB");
+        if (p) {
+            switch (*p) {
             case 'K':
-              unit = 1024ULL;
-              break;
+                unit = 1024ULL;
+                break;
             case 'M':
-              unit = 1024ULL * 1024ULL;
-              break;
+                unit = 1024ULL * 1024ULL;
+                break;
             case 'G':
-              unit = 1024ULL * 1024ULL * 1024ULL;
-              break;
+                unit = 1024ULL * 1024ULL * 1024ULL;
+                break;
             case 'T':
-              unit = 1024ULL * 1024ULL * 1024ULL * 1024ULL;
-              break;
+                unit = 1024ULL * 1024ULL * 1024ULL * 1024ULL;
+                break;
             default:
-              unit = 1ULL;
-              break;
+                unit = 1ULL;
+                break;
             }
-          *p = '\0';
-          len = strlen (digits);
+            *p = '\0';
+            len = strlen(digits);
         }
     }
-  if (len > 1)
-    {
-      switch (digits[len - 1])
-        {
+    if (len > 1) {
+        switch (digits[len - 1]) {
         case 'k':
         case 'K':
-          unit = 1000ULL;
-          digits[len - 1] = '\0';
-          break;
+            unit = 1000ULL;
+            digits[len - 1] = '\0';
+            break;
         case 'm':
         case 'M':
-          unit = 1000ULL * 1000ULL;
-          digits[len - 1] = '\0';
-          break;
+            unit = 1000ULL * 1000ULL;
+            digits[len - 1] = '\0';
+            break;
         case 'g':
         case 'G':
-          unit = 1000ULL * 1000ULL * 1000ULL;
-          digits[len - 1] = '\0';
-          break;
+            unit = 1000ULL * 1000ULL * 1000ULL;
+            digits[len - 1] = '\0';
+            break;
         case 'T':
-          unit = 1000ULL * 1000ULL * 1000ULL * 1000ULL;
-          digits[len - 1] = '\0';
-          break;
+            unit = 1000ULL * 1000ULL * 1000ULL * 1000ULL;
+            digits[len - 1] = '\0';
+            break;
         case 'P':
-          unit = 1000ULL * 1000ULL * 1000ULL * 1000ULL * 1000ULL;
-          digits[len - 1] = '\0';
-          break;
+            unit = 1000ULL * 1000ULL * 1000ULL * 1000ULL * 1000ULL;
+            digits[len - 1] = '\0';
+            break;
         default:
-          break;
+            break;
         }
     }
 
-  digit = strtoul (digits, endptr, 0);
-  number = digit * unit;
+    digit = strtoul(digits, endptr, 0);
+    number = digit * unit;
 
-  return number;
+    return number;
 }
-

@@ -19,13 +19,15 @@
 #ifndef _BGPDUMP_H_
 #define _BGPDUMP_H_
 
+#include <stdint.h>
+
 #ifndef MIN
 #define MIN(x, y) ((x) > (y) ? (y) : (x))
 #endif /*MIN*/
 
 #define AUTLIM 8
 extern unsigned long autnums[];
-extern int autsiz;
+extern int32_t autsiz;
 
 extern struct ptree *ptree[];
 #define ROUTE_ORIG_SIZE (1000 * 1000 * 1000)
@@ -36,4 +38,3 @@ extern int qaf;
 #define MAX_ADDR_LENGTH 16
 
 #endif /*_BGPDUMP_H_*/
-

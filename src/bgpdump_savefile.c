@@ -16,20 +16,20 @@
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <arpa/inet.h>
+#include <assert.h>
+#include <netinet/in.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <sys/queue.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+#include <sys/socket.h>
 #include <sys/time.h>
-#include <assert.h>
+#include <sys/types.h>
 
-#include "queue.h"
 #include "ptree.h"
+#include "queue.h"
 
 #include "bgpdump_route.h"
 
@@ -117,6 +117,5 @@ bgpdump_output (char *output, struct ptree *ptree)
 
   fclose (fp);
 }
-
 
 #endif

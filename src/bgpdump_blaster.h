@@ -10,24 +10,26 @@
 #define __BGPDUMP_BLASTER_H__
 
 #include <netinet/in.h>
+#include <stdio.h>
 
-void bgpdump_blaster(void);
-char *fmt_timestamp(void);
+void
+bgpdump_blaster(void);
+char *
+fmt_timestamp(void);
 
 #define BGP_TCP_PORT 179
-#define BGP_READBUFSIZE  1024*256
-#define BGP_WRITEBUFSIZE 1024*256
+#define BGP_READBUFSIZE 1024 * 256
+#define BGP_WRITEBUFSIZE 1024 * 256
 #define BGP_MAX_MESSAGE_SIZE 4096
 
-#define BGP_MSG_OPEN         1
-#define BGP_MSG_UPDATE       2
+#define BGP_MSG_OPEN 1
+#define BGP_MSG_UPDATE 2
 #define BGP_MSG_NOTIFICATION 3
-#define BGP_MSG_KEEPALIVE    4
+#define BGP_MSG_KEEPALIVE 4
 
-#define MSEC 1000*1000 /* 1 million nanoseconds */
+#define MSEC 1000 * 1000 /* 1 million nanoseconds */
 
-typedef enum
-{
+typedef enum {
     IDLE,
     CONNECT,
     ACTIVE,
@@ -36,8 +38,7 @@ typedef enum
     ESTABLISHED
 } state_t;
 
-struct bgp_session_
-{
+struct bgp_session_ {
     FILE *file;
     int sockfd;
     state_t state;
@@ -72,18 +73,18 @@ struct bgp_session_
     int ribwalk_peer_index;
     int ribwalk_prefix_index;
     struct bgp_prefix_ *ribwalk_prefix;
-    uint ribwalk_complete:1, ribwalk_withdraw:1;
+    uint ribwalk_complete : 1, ribwalk_withdraw : 1;
     struct timespec ribwalk_start; /* Timestamp when RIB walk was started */
-    struct timespec ribwalk_eor; /* Timestamp when end of RIB was sent */
+    struct timespec ribwalk_eor;   /* Timestamp when end of RIB was sent */
 
     /*
      * Statistics.
      */
     struct {
-	uint updates_sent;
-	uint prefixes_sent;
-	uint prefixes_withdrawn;
-	uint octets_sent;
+        uint updates_sent;
+        uint prefixes_sent;
+        uint prefixes_withdrawn;
+        uint octets_sent;
     } stats;
 };
 
@@ -109,17 +110,22 @@ struct keyval_ {
     const char *key; /* key */
 };
 
-struct __attribute__((__packed__)) log_id_
-{
+struct __attribute__((__packed__)) log_id_ {
     uint8_t enable;
-    void (*filter_cb)(struct log_id_ *, void *); /* Callback function for filtering */
+    void (*filter_cb)(struct log_id_ *, void *); /* Callback function for
+                                                    filtering */
     void *filter_arg;
 };
 
-#define LOG(log_id_, fmt_, ...)					\
-    do { if (log_id[log_id_].enable) {fprintf(stdout, "%s "fmt_, fmt_timestamp(), ##__VA_ARGS__);} } while (0)
+#define LOG(log_id_, fmt_, ...)                                                \
+    do {                                                                       \
+        if (log_id[log_id_].enable) {                                          \
+            fprintf(stdout, "%s " fmt_, fmt_timestamp(), ##__VA_ARGS__);       \
+        }                                                                      \
+    } while (0)
 
 extern struct log_id_ log_id[];
-extern void log_enable(char *);
+extern void
+log_enable(char *);
 
 #endif /* __BGPDUMP_BLASTER_H__ */

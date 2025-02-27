@@ -15,8 +15,11 @@
  * You should have received a copy of the GNU General Public License along
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stdint.h>
 
-void benchmark_start ();
-void benchmark_stop ();
-void benchmark_print (uint64_t query_size);
-
+void
+benchmark_start();
+void
+benchmark_stop();
+void
+benchmark_print(uint64_t query_size);
