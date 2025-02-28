@@ -31,6 +31,7 @@
 
 #include "bgpdump.h"
 #include "bgpdump_data.h"
+#include "bgpdump_log.h"
 #include "bgpdump_option.h"
 #include "bgpdump_peer.h"
 #include "bgpdump_peerstat.h"
@@ -379,7 +380,6 @@ bgpdump_process_bgp_attributes(
     char *p = start;
     int size;
 
-    char attr_flags[64];
     char *attr_name;
     char unknown_buf[16];
 
@@ -413,16 +413,6 @@ bgpdump_process_bgp_attributes(
         BUFFER_OVERRUN_CHECK(p, size, end)
         attribute_type = ntohs(*(uint16_t *)p);
         p += size;
-
-        snprintf(
-            attr_flags,
-            sizeof(attr_flags),
-            "%s, %s, %s%s",
-            (attribute_type & OPTIONAL ? "optional" : "well-known"),
-            (attribute_type & TRANSITIVE ? "transitive" : "non-transitive"),
-            (attribute_type & PARTIAL ? "partial" : "complete"),
-            (attribute_type & EXTENDED_LENGTH ? ", extended-length" : "")
-        );
 
         switch (attribute_type & TYPE_CODE) {
         case ORIGIN:
@@ -484,7 +474,17 @@ bgpdump_process_bgp_attributes(
             p += size;
         }
 
-        if (show && detail)
+        if (show && detail) {
+            char attr_flags[64];
+            snprintf(
+                attr_flags,
+                sizeof(attr_flags),
+                "%s, %s, %s%s",
+                (attribute_type & OPTIONAL ? "optional" : "well-known"),
+                (attribute_type & TRANSITIVE ? "transitive" : "non-transitive"),
+                (attribute_type & PARTIAL ? "partial" : "complete"),
+                (attribute_type & EXTENDED_LENGTH ? ", extended-length" : "")
+            );
             printf(
                 "  attr: %s <%s> (%#04x) len: %d\n",
                 attr_name,
@@ -492,6 +492,7 @@ bgpdump_process_bgp_attributes(
                 attribute_type,
                 attribute_length
             );
+        }
 
         BUFFER_OVERRUN_CHECK(p, attribute_length, end)
         switch (attribute_type & TYPE_CODE) {
@@ -700,8 +701,8 @@ bgpdump_process_bgp_attributes(
             r++;
             len = (unsigned char)*r;
             r++;
-            if ((debug || detail) && len != sizeof(struct in6_addr))
-                printf("warning: MP_NLRI: nexthop len: %d\n", len);
+            if (log_enabled(DEBUG) && len != sizeof(struct in6_addr))
+                LOG(WARN, "warning: MP_NLRI: nexthop len: %d\n", len);
             memset(route->nexthop, 0, sizeof(route->nexthop));
             memcpy(route->nexthop, r, MIN(MAX_ADDR_LENGTH, len));
             if ((debug || verbose) && len == 2 * sizeof(struct in6_addr)) {
@@ -726,6 +727,10 @@ bgpdump_process_bgp_attributes(
             r++;
             // printf ("nlri_plen: %d\n", nlri_plen);
             memset(nlri_prefix, 0, sizeof(nlri_prefix));
+            if (nlri_plen > 16) {
+                nlri_plen = MIN(MAX_ADDR_LENGTH, nlri_plen);
+            }
+
             memcpy(nlri_prefix, r, (nlri_plen + 7) / 8);
 
             if (show && detail) {
@@ -1165,10 +1170,10 @@ bgpdump_process_table_v2_rib_entry(
     if (!peer_spec_size || peer_match) {
         if (show && (debug || detail))
             printf(
-                "rib[%d]: peer[%d] originated_time: %lu attribute_length: %d\n",
+                "rib[%d]: peer[%d] originated_time: %u attribute_length: %d\n",
                 index,
                 peer_index,
-                (unsigned long)originated_time,
+                originated_time,
                 attribute_length
             );
 
@@ -1518,18 +1523,13 @@ void
 bgpdump_process_table_v2_rib_generic(
     struct mrt_header *h, struct mrt_info *info, char *data_end
 ) {
-    char *p;
-    int size;
-    int i;
-
-    uint32_t prefix_size;
     uint16_t entry_count;
     uint16_t afi;
     uint8_t safi;
 
-    p = (char *)h + sizeof(struct mrt_header);
+    char *p = (char *)h + sizeof(struct mrt_header);
 
-    size = sizeof(sequence_number);
+    int size = sizeof(sequence_number);
     BUFFER_OVERRUN_CHECK(p, size, data_end);
     sequence_number = ntohl(*(uint32_t *)p);
     p += size;
@@ -1569,7 +1569,7 @@ bgpdump_process_table_v2_rib_generic(
         p += size;
     }
 
-    prefix_size = ((prefix_length + 7) / 8);
+    uint32_t prefix_size = ((prefix_length + 7) / 8);
     size = prefix_size;
     BUFFER_OVERRUN_CHECK(p, size, data_end);
     memset(prefix, 0, sizeof(prefix));
@@ -1585,15 +1585,15 @@ bgpdump_process_table_v2_rib_generic(
         char pbuf[64];
         inet_ntop(qaf, prefix, pbuf, sizeof(pbuf));
         printf(
-            "Sequence Number: %lu Prefix %s/%d Entry Count: %d\n",
-            (unsigned long)sequence_number,
+            "Sequence Number: %u Prefix %s/%d Entry Count: %d\n",
+            sequence_number,
             pbuf,
             prefix_length,
             entry_count
         );
     }
 
-    for (i = 0; i < entry_count && p < data_end; i++) {
+    for (int i = 0; i < entry_count && p < data_end; i++) {
         bgpdump_process_table_v2_rib_entry(i, &p, info, data_end);
     }
 }

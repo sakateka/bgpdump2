@@ -14,8 +14,6 @@
 
 void
 bgpdump_blaster(void);
-char *
-fmt_timestamp(void);
 
 #define BGP_TCP_PORT 179
 #define BGP_READBUFSIZE 1024 * 256
@@ -87,45 +85,5 @@ struct bgp_session_ {
         uint octets_sent;
     } stats;
 };
-
-/*
- * List of log-ids.
- */
-enum {
-    LOG_ID_MIN,
-    TIMER,
-    TIMER_DETAIL,
-    UPDATE,
-    UPDATE_DETAIL,
-    KEEPALIVE,
-    FSM,
-    IO,
-    NORMAL,
-    ERROR,
-    LOG_ID_MAX
-};
-
-struct keyval_ {
-    u_int val;       /* value */
-    const char *key; /* key */
-};
-
-struct __attribute__((__packed__)) log_id_ {
-    uint8_t enable;
-    void (*filter_cb)(struct log_id_ *, void *); /* Callback function for
-                                                    filtering */
-    void *filter_arg;
-};
-
-#define LOG(log_id_, fmt_, ...)                                                \
-    do {                                                                       \
-        if (log_id[log_id_].enable) {                                          \
-            fprintf(stdout, "%s " fmt_, fmt_timestamp(), ##__VA_ARGS__);       \
-        }                                                                      \
-    } while (0)
-
-extern struct log_id_ log_id[];
-extern void
-log_enable(char *);
 
 #endif /* __BGPDUMP_BLASTER_H__ */

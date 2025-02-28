@@ -19,7 +19,9 @@
 #ifndef _BGPDUMP_FILE_H_
 #define _BGPDUMP_FILE_H_
 
+#include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 typedef enum {
     FORMAT_RAW,
@@ -47,6 +49,8 @@ struct fhandle {
     void *file2;
 };
 
+void *
+fopen_wrap(const char *filename, const char *mode);
 size_t
 fread_wrap(void *ptr, size_t size, size_t nitems, void *file);
 

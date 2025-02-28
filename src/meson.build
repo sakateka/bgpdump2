@@ -18,14 +18,6 @@ srcs = [
   'bgpdump.c',
 ]
 
-#noinst_HEADERS = \
-#  bgpdump_file.h bgpdump_peer.h bgpdump_data.h bgpdump_route.h \
-#  benchmark.h ptree.h queue.h timer.h \
-#  bgpdump_savefile.h bgpdump_query.h bgpdump_ptree.h \
-#  bgpdump_peerstat.h bgpdump_option.h bgpdump_parse.h \
-#  bgpdump_udiff.h \
-#  bgpdump.h
-
 executable(
   'bgpdump2',
   srcs,

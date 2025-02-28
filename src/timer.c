@@ -15,7 +15,8 @@
 #include <sys/queue.h>
 #include <time.h>
 
-#include "bgpdump_blaster.h"
+#include "bgpdump_kv.h"
+#include "bgpdump_log.h"
 #include "timer.h"
 
 /*

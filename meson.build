@@ -4,6 +4,7 @@ project(
   version: '2.0.14',
   default_options: [
     'buildtype=release',
+    'debug=true',
     'warning_level=2',
     'werror=true',
   ],

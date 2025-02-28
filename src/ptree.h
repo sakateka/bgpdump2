@@ -21,10 +21,10 @@
 
 struct ptree_node {
     char *key;
-    int keylen;
     struct ptree_node *parent;
     struct ptree_node *child[2];
     void *data;
+    int keylen;
 };
 
 #define PTREE_KEY_SIZE(len) (((len) + 7) / 8)
@@ -64,15 +64,10 @@ struct ptree_node *
 ptree_head(struct ptree *t);
 struct ptree_node *
 ptree_next(struct ptree_node *v);
-struct ptree_node *
-ptree_next_within(int from, int to, struct ptree_node *v);
 
 struct ptree *
 ptree_create();
 void
 ptree_delete(struct ptree *t);
-
-int
-ptree_count(struct ptree *t);
 
 #endif /*_PTREE_H_*/

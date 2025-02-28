@@ -49,14 +49,31 @@ Usage: build/src/bgpdump2 [options] <file1> <file2> ...
 ```
 
 ## Load test example
+
+`lbzcat` is significantly faster than the built-in `bz2` decompressor.
+`lbzcat` scales linearly with the number of threads.
 ```sh
-ulimit -n 65536
-build/src/bgpdump2 -B $TARGET_IP:$TARGET_PORT \
+time lbzcat -n 10 -d data/rib.20250227.0000.bz2 > /dev/null
+
+real	0m2.097s
+user	0m20.732s
+sys	0m0.153s
+
+$ time bzcat -d data/rib.20250227.0000.bz2 > /dev/null
+
+real	0m15.806s
+user	0m15.763s
+sys	0m0.042s
+```
+
+```sh
+lbzcat -n 10 -d data/*.bz2|
+  build/src/bgpdump2 -B $TARGET_IP:$TARGET_PORT \
     -p $INDEX [-p $INDEX ...] \
     [-a $LOCAL_AS] \
     [-T $PREFIX_COUNT] \
     -q \
-    [-S $LOCAL_ADDR] mrt-file.bz2
+    [-S $LOCAL_ADDR]
 ```
 
 ### Bird config example

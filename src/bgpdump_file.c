@@ -29,7 +29,7 @@
 #include "bgpdump_option.h"
 
 struct access_method methods[] = {
-    {(fopen_t)fopen,
+    {(fopen_t)fopen_wrap,
      (fread_t)fread_wrap,
      (fwrite_t)fwrite,
      (fclose_t)fclose,
@@ -48,6 +48,15 @@ struct access_method methods[] = {
 
 struct fhandle fhandle;
 int bzerror;
+
+void *
+fopen_wrap(const char *filename, const char *mode) {
+    if (strcmp(filename, "-") == 0) {
+        setvbuf(stdin, NULL, _IOFBF, bufsiz);
+        return stdin;
+    }
+    return fopen(filename, mode);
+}
 
 size_t
 fread_wrap(void *ptr, size_t size, size_t nitems, void *file) {

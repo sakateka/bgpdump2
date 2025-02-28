@@ -27,7 +27,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-#include "bgpdump_blaster.h"
+#include "bgpdump_log.h"
 #include "bgpdump_option.h"
 #include "bgpdump_parse.h"
 #include "bgpdump_peer.h"
@@ -170,19 +170,13 @@ version() {
 
 int
 bgpdump_getopt(int argc, char **argv) {
-    int ch;
     int status = 0;
     char *endptr;
-    int val;
-    char *next_peer = 0;
 
-    /*
-     * Clear logging global.
-     */
-    memset(log_id, 0, sizeof(struct log_id_) * LOG_ID_MAX);
+    log_reset();
 
     while (1) {
-        ch = getopt_long(argc, argv, optstring, longopts, &longindex);
+        int ch = getopt_long(argc, argv, optstring, longopts, &longindex);
 
         if (ch == -1)
             break;
@@ -218,10 +212,13 @@ bgpdump_getopt(int argc, char **argv) {
             peer_table_only++;
             break;
         case 'p':
-            do {
-                next_peer = strchr(optarg, ',');
-                val = strtoul(optarg, &endptr, 0);
-                if ((*endptr != '\0' && *endptr != ',') || optarg == endptr) {
+            for (char *nums = optarg, *endptr;; nums = NULL) {
+                char *token = strtok(nums, ",");
+                if (token == NULL) {
+                    break;
+                }
+                int val = strtoul(token, &endptr, 0);
+                if (endptr && *endptr != '\0') {
                     printf("malformed peer_index: '%s'\n", optarg);
                     exit(-1);
                 }
@@ -231,21 +228,27 @@ bgpdump_getopt(int argc, char **argv) {
                     );
                     exit(-1);
                 }
-                if (next_peer) {
-                    optarg = ++next_peer;
-                }
-            } while (next_peer && *next_peer != '\0' && *optarg != '\0');
+            }
             break;
         case 'a':
-            val = strtoul(optarg, &endptr, 0);
-            if (*endptr != '\0') {
-                printf("malformed autnum: %s\n", optarg);
-                exit(-1);
+            for (char *nums = optarg, *endptr;; nums = NULL) {
+                char *token = strtok(nums, ",");
+                if (token == NULL) {
+                    break;
+                }
+                int val = strtoul(token, &endptr, 0);
+                if (endptr && *endptr != '\0') {
+                    printf("malformed autnum: %s\n", optarg);
+                    exit(-1);
+                }
+                autnums[autsiz % AUTLIM] = val;
+                autsiz++;
+                if (autsiz >= AUTLIM) {
+                    printf("too many autnums, more then %d\n", AUTLIM);
+                    exit(-1);
+                }
             }
-            autnums[autsiz % AUTLIM] = val;
-            autsiz++;
             break;
-
         case 'u':
             udiff++;
             break;
@@ -309,7 +312,7 @@ bgpdump_getopt(int argc, char **argv) {
             withdraw_delay = strtoul(optarg, &endptr, 0);
             break;
         case 't':
-            log_enable(optarg);
+            log_enable_name(optarg);
             break;
         case '4':
             qaf = AF_INET;

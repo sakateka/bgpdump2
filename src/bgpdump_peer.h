@@ -38,7 +38,7 @@ struct peer {
 
 #define PEER_MAX 256
 
-#define PEER_INDEX_MAX 16
+#define PEER_INDEX_MAX 32
 
 extern struct peer peer_null;
 extern struct peer peer_table[];

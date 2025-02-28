@@ -373,58 +373,6 @@ ptree_next(struct ptree_node *v) {
     return NULL;
 }
 
-struct ptree_node *
-ptree_next_within(int from, int to, struct ptree_node *v) {
-    struct ptree_node *t;
-    struct ptree_node *u;
-    struct ptree_node *w;
-
-    /* if the keylen == to, go up */
-    if (v->keylen < to) {
-        /* if the left child exists, go left */
-        if (v->child[0]) {
-            w = v->child[0];
-            return w;
-        }
-
-        /* else, if the right child exists, go right */
-        if (v->child[1]) {
-            w = v->child[1];
-            return w;
-        }
-    }
-
-    u = v->parent;
-
-    if (!u)
-        return NULL;
-
-    if (u->keylen < from)
-        return NULL;
-
-    if (u->child[0] == v) {
-        w = u->child[1];
-        if (w)
-            return w;
-    }
-
-    t = u->parent;
-    while (t && from <= t->keylen && (t->child[1] == u || !t->child[1])) {
-        u = t;
-        t = t->parent;
-    }
-
-    if (t && from <= t->keylen) {
-        /* return the not-yet-traversed right-child node */
-        w = t->child[1];
-        XRTASSERT(w, ("xrt: an impossible end of traverse"));
-        return w;
-    }
-
-    /* end of traverse */
-    return NULL;
-}
-
 struct ptree *
 ptree_create() {
     struct ptree *t;
@@ -461,15 +409,4 @@ ptree_delete(struct ptree *t) {
 
     queue_delete(q);
     XRTFREE(t);
-}
-
-int
-ptree_count(struct ptree *t) {
-    int count = 0;
-    struct ptree_node *x;
-    for (x = ptree_head(t); x; x = ptree_next(x)) {
-        if (x->data)
-            count++;
-    }
-    return count;
 }

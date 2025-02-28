@@ -27,6 +27,8 @@
 
 #include "bgpdump_blaster.h"
 #include "bgpdump_data.h"
+#include "bgpdump_kv.h"
+#include "bgpdump_log.h"
 #include "bgpdump_option.h"
 #include "bgpdump_peer.h"
 #include "bgpdump_route.h"
@@ -35,21 +37,6 @@
 
 /* Globals */
 struct timer_root_ timer_root; /* Timer root */
-struct log_id_ log_id[LOG_ID_MAX];
-
-struct keyval_ log_names[] = {
-    {TIMER, "timer"},
-    {TIMER_DETAIL, "timer-detail"},
-    {UPDATE, "update"},
-    {UPDATE_DETAIL, "update-detail"},
-    {KEEPALIVE, "keepalive"},
-    {FSM, "fsm"},
-    {IO, "io"},
-    {NORMAL, "normal"},
-    {ERROR, "error"},
-    {0, NULL}
-};
-
 struct keyval_ bgp_msg_names[] = {
     {BGP_MSG_OPEN, "open"},
     {BGP_MSG_UPDATE, "update"},
@@ -133,41 +120,6 @@ void
 push_be_uint(struct bgp_session_ *, uint, unsigned long long);
 void
 write_be_uint(u_char *, uint, unsigned long long);
-
-/*
- * Format the logging timestamp.
- */
-char *
-fmt_timestamp(void) {
-    static char ts_str[sizeof("Jun 19 08:07:13.711541")];
-    struct timespec now;
-    struct tm tm;
-    int len;
-
-    clock_gettime(CLOCK_REALTIME, &now);
-    localtime_r(&now.tv_sec, &tm);
-
-    len = strftime(ts_str, sizeof(ts_str), "%b %d %H:%M:%S", &tm);
-    snprintf(ts_str + len, sizeof(ts_str) - len, ".%06lu", now.tv_nsec / 1000);
-
-    return ts_str;
-}
-
-/*
- * Check if logging is enabled.
- */
-void
-log_enable(char *log_name) {
-    int idx;
-
-    idx = 0;
-    while (log_names[idx].key) {
-        if (strcmp(log_names[idx].key, log_name) == 0) {
-            log_id[log_names[idx].val].enable = 1;
-        }
-        idx++;
-    }
-}
 
 const char *
 keyval_get_key(struct keyval_ *keyval, u_int val) {
@@ -445,7 +397,7 @@ bgpdump_ribwalk_cb(struct timer_ *timer) {
 
         /* backoff if withdraw delay has not yet been reached */
         if (diff.tv_sec < withdraw_delay) {
-            LOG(NORMAL,
+            LOG(INFO,
                 "Delay withdraw generation for %lu secs\n",
                 withdraw_delay - diff.tv_sec);
             timer_add(
@@ -481,7 +433,7 @@ bgpdump_ribwalk_cb(struct timer_ *timer) {
             return;
         }
 
-        LOG(NORMAL,
+        LOG(INFO,
             "RIB for peer-index %d: AS %u, ipv4 prefixes %u, ipv6 prefixes %u, "
             "%u paths\n",
             peer_index,
@@ -545,7 +497,7 @@ bgpdump_ribwalk_cb(struct timer_ *timer) {
                         session->ribwalk_peer_index++;
                     } else {
                         session->ribwalk_complete = true;
-                        LOG(NORMAL, "RIB walk complete\n");
+                        LOG(INFO, "RIB walk complete\n");
                     }
                 }
 
@@ -563,7 +515,7 @@ bgpdump_ribwalk_cb(struct timer_ *timer) {
                 bgpdump_send_eor(session, bgp_path->af, bgp_path->safi);
 
                 bgpdump_fflush(session);
-                LOG(NORMAL,
+                LOG(INFO,
                     "Sent %u updates, %u prefixes sent, %u prefixes withdrawn, "
                     "%u octets\n",
                     session->stats.updates_sent,
@@ -575,8 +527,7 @@ bgpdump_ribwalk_cb(struct timer_ *timer) {
                 timespec_sub(
                     &diff, &session->ribwalk_eor, &session->ribwalk_start
                 );
-                LOG(NORMAL, "End-of-RIB, walk time %s\n", timespec_format(&diff)
-                );
+                LOG(INFO, "End-of-RIB, walk time %s\n", timespec_format(&diff));
 
                 /*
                  * Re-schedule.
@@ -655,7 +606,7 @@ bgpdump_ribwalk_cb(struct timer_ *timer) {
             );
             session->write_idx += filtered_path_length;
 
-            if (log_id[UPDATE].enable) {
+            if (log_enabled(UPDATE)) {
                 int old_show, old_detail;
 
                 memset(&route, 0, sizeof(route));
@@ -928,7 +879,7 @@ bgpdump_ribwalk_cb(struct timer_ *timer) {
     }
 
     if (updates_encoded) {
-        LOG(NORMAL,
+        LOG(INFO,
             "Sent %u updates, %u prefixes sent, %u prefixes withdrawn, %u "
             "octets\n",
             session->stats.updates_sent,
@@ -1291,12 +1242,16 @@ bgpdump_send_open_cb(struct timer_ *timer) {
 
 static char *
 parse_port_in_addr(char *addr, uint16_t *port) {
+    addr = strdup(addr);
     char *port_str = strrchr(addr, ':');
     if (port_str != NULL &&
         (strchr(addr, '.') || (port_str > addr && *(port_str - 1) == ']'))) {
         *port_str = '\0';
         if (addr[0] == '[') {
             addr += 1;
+        }
+        if (*(port_str - 1) == ']') {
+            *(port_str - 1) = '\0';
         }
         port_str += 1;
     } else {
@@ -1340,15 +1295,12 @@ bgpdump_connect_session_cb(struct timer_ *timer) {
 
     /* First figure out what addr family the socket shall be */
     af = 0;
-    if (inet_pton(AF_INET, addr, &session->addr4.sin_addr)) {
+    if (inet_pton(AF_INET, addr, &session->addr4.sin_addr) == 1) {
         af = AF_INET;
-    } else if (inet_pton(AF_INET6, addr, &session->addr6.sin6_addr)) {
+    } else if (inet_pton(AF_INET6, addr, &session->addr6.sin6_addr) == 1) {
         af = AF_INET6;
     } else {
-        LOG(ERROR,
-            "Failed to parse target %s: %s\n",
-            blaster_addr,
-            strerror(errno));
+        LOG(ERROR, "Failed to parse target %s\n", blaster_addr);
         return;
     }
 
@@ -1409,7 +1361,7 @@ bgpdump_connect_session_cb(struct timer_ *timer) {
             goto timeout_reconnect;
         }
 
-        LOG(NORMAL, "Connecting to %s\n", blaster_addr);
+        LOG(INFO, "Connecting to %s\n", blaster_addr);
 
         tv.tv_sec = 3;
         tv.tv_usec = 0;
@@ -1453,7 +1405,7 @@ bgpdump_connect_session_cb(struct timer_ *timer) {
                 exit(0);
             }
 
-            LOG(NORMAL, "Socket to %s is writeable\n", blaster_addr);
+            LOG(INFO, "Socket to %s is writeable\n", blaster_addr);
 
             /* Now lets try to set the receive buffer size */
             valopt = BGP_READBUFSIZE;
@@ -1491,7 +1443,7 @@ bgpdump_connect_session_cb(struct timer_ *timer) {
     }
 
 timeout_reconnect:
-    LOG(NORMAL, "Connect timeout\n");
+    LOG(INFO, "Connect timeout\n");
     close(session->sockfd);
     session->sockfd = -1;
 
@@ -1549,7 +1501,7 @@ bgpdump_read(struct bgp_session_ *session) {
             session->peer_as = read_be_uint(session->read_buf_start + 20, 2);
             session->peer_holdtime =
                 read_be_uint(session->read_buf_start + 22, 2);
-            LOG(NORMAL,
+            LOG(INFO,
                 "  Peer AS %u, holdtime %us\n",
                 session->peer_as,
                 session->peer_holdtime);
@@ -1572,7 +1524,7 @@ bgpdump_read(struct bgp_session_ *session) {
 
             switch (error_code) {
             case 1: /* Message Header Error */
-                LOG(NORMAL,
+                LOG(INFO,
                     "Notification Error: %s (%u), %s (%u)\n",
                     keyval_get_key(bgp_notification_error_values, error_code),
                     error_code,
@@ -1582,7 +1534,7 @@ bgpdump_read(struct bgp_session_ *session) {
                     error_subcode);
                 break;
             case 2: /* OPEN Message Error */
-                LOG(NORMAL,
+                LOG(INFO,
                     "Notification Error: %s (%u), %s (%u)\n",
                     keyval_get_key(bgp_notification_error_values, error_code),
                     error_code,
@@ -1592,7 +1544,7 @@ bgpdump_read(struct bgp_session_ *session) {
                     error_subcode);
                 break;
             case 3: /* Update Message Error */
-                LOG(NORMAL,
+                LOG(INFO,
                     "Notification Error: %s (%u), %s (%u)\n",
                     keyval_get_key(bgp_notification_error_values, error_code),
                     error_code,
@@ -1602,7 +1554,7 @@ bgpdump_read(struct bgp_session_ *session) {
                     error_subcode);
                 break;
             case 6: /* Cease */
-                LOG(NORMAL,
+                LOG(INFO,
                     "Notification Error: %s (%u), %s (%u)\n",
                     keyval_get_key(bgp_notification_error_values, error_code),
                     error_code,
@@ -1612,7 +1564,7 @@ bgpdump_read(struct bgp_session_ *session) {
                     error_subcode);
                 break;
             default:
-                LOG(NORMAL,
+                LOG(INFO,
                     "Notification Error: %s (%u), subcode %u\n",
                     keyval_get_key(bgp_notification_error_values, error_code),
                     error_code,
@@ -1712,7 +1664,7 @@ bgpdump_read_cb(struct timer_ *timer) {
          */
         res = recv(session->sockfd, &c, 1, MSG_PEEK);
         if (res == 0) {
-            LOG(NORMAL, "Remote peer has closed the connection\n");
+            LOG(INFO, "Remote peer has closed the connection\n");
 
             /* restart session */
             timer_add(
@@ -1817,9 +1769,9 @@ bgpdump_blaster(void) {
     timer_init_root(&timer_root); /* Init timer queue */
 
     /* Logging */
-    log_id[NORMAL].enable = true;
-    log_id[ERROR].enable = true;
-    log_id[FSM].enable = true;
+    log_enable_id(INFO);
+    log_enable_id(ERROR);
+    log_enable_id(FSM);
 
     if (blaster_dump) {
 

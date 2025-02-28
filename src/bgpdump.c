@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU General Public License along
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#define LOG_IMPLEMENTATION
 
 #include <arpa/inet.h>
 #include <assert.h>
@@ -36,6 +37,7 @@
 #include "bgpdump.h"
 #include "bgpdump_data.h"
 #include "bgpdump_file.h"
+#include "bgpdump_log.h"
 #include "bgpdump_option.h"
 #include "bgpdump_parse.h"
 #include "bgpdump_route.h"
@@ -52,7 +54,7 @@ extern int optind;
 char *progname = NULL;
 
 struct mrt_info info;
-struct ptree *ptree[AF_INET6 + 1];
+struct ptree *ptree[2];
 
 int qaf = AF_INET;
 unsigned long autnums[AUTLIM];
@@ -453,7 +455,7 @@ int
 main(int argc, char **argv) {
     char *filename = NULL;
 
-    progname = argv[0];
+    progname = strdup(argv[0]);
 
     bufsiz = resolv_number(BGPDUMP_BUFSIZ_DEFAULT, NULL);
     nroutes = resolv_number(ROUTE_LIMIT_DEFAULT, NULL);
@@ -466,9 +468,10 @@ main(int argc, char **argv) {
     argv += optind;
 
     if (argc == 0) {
-        printf("specify rib files.\n");
-        usage();
-        exit(-1);
+        printf("# Read MRT data from stdin\n");
+        argc += 1;
+        argv -= 1;
+        argv[0] = "-";
     }
 
     if (verbose) {
@@ -480,6 +483,15 @@ main(int argc, char **argv) {
                 putchar(',');
             }
             printf("%d", peer_spec_index[i]);
+        }
+        puts("");
+
+        printf("asn nums = ");
+        for (int i = 0; i < autsiz; i++) {
+            if (i > 0) {
+                putchar(',');
+            }
+            printf("%ld", autnums[i]);
         }
         puts("");
     }
@@ -511,8 +523,8 @@ main(int argc, char **argv) {
 
     if (lookup) {
         route_init();
-        ptree[AF_INET] = ptree_create();
-        ptree[AF_INET6] = ptree_create();
+        ptree[AF_INET >> 3] = ptree_create();
+        ptree[AF_INET6 >> 3] = ptree_create();
     }
 
     if (udiff) {
@@ -644,8 +656,8 @@ main(int argc, char **argv) {
 
     if (lookup) {
         free(query_table);
-        ptree_delete(ptree[AF_INET]);
-        ptree_delete(ptree[AF_INET6]);
+        ptree_delete(ptree[AF_INET >> 3]);
+        ptree_delete(ptree[AF_INET6 >> 3]);
         route_finish();
     }
 

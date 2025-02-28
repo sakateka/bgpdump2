@@ -75,14 +75,12 @@ peer_print(struct peer *peer) {
 
 void
 peer_route_count_show() {
-    int i;
-
-    printf("#timestamp,peer1,peer2,...\n");
-    printf("%lu,", (unsigned long)timestamp);
-    for (i = 0; i < peer_size; i++) {
-        printf("%llu", (unsigned long long)peer_table[i].route_count);
-        if (i < peer_size - 1)
+    printf("#timestamp,peer_idx1:peer1,peer_idx2:peer2,...\n");
+    printf("%u,", timestamp);
+    for (int i = 0; i < peer_size; i++) {
+        if (i > 0)
             printf(",");
+        printf("%d:%lu", i, peer_table[i].route_count);
     }
     printf("\n");
     fflush(stdout);
@@ -97,12 +95,10 @@ peer_route_count_clear() {
 
 void
 peer_route_count_by_plen_show() {
-    int i, j;
-
-    for (i = 0; i < peer_size; i++) {
+    for (int i = 0; i < peer_size; i++) {
         if (peer_spec_size) {
             int match = 0;
-            for (j = 0; j < peer_spec_size; j++)
+            for (int j = 0; j < peer_spec_size; j++)
                 if (i == peer_spec_index[j])
                     match++;
 
@@ -110,13 +106,11 @@ peer_route_count_by_plen_show() {
                 continue;
         }
 
-        printf("%lu,", (unsigned long)timestamp);
-        for (j = 0; j < 33; j++) {
-            printf(
-                "%llu", (unsigned long long)peer_table[i].route_count_by_plen[j]
-            );
-            if (j < 32)
+        printf("%u,", timestamp);
+        for (int i = 0; i < 33; i++) {
+            if (i > 0)
                 printf(",");
+            printf("%lu", peer_table[i].route_count_by_plen[i]);
         }
         printf("\n");
     }
