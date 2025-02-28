@@ -64,9 +64,9 @@ build/src/bgpdump2 -B $TARGET_IP:$TARGET_PORT \
 router id 127.0.0.1;
 
 protocol bgp mybgp {
-│   local 127.0.0.1 port 6666 as 65535;
-│   neighbor 127.0.0.1 internal;
-│   ipv4 { export none; import all; };
-│   ipv6 { export none; import all; };
+    local 127.0.0.1 port 6666 as 65535;
+    neighbor 127.0.0.1 internal;
+    ipv4 { export none; import all; };
+    ipv6 { export none; import all; };
 }
 ```
