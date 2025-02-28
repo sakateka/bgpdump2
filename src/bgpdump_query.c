@@ -96,7 +96,7 @@ query_file(char *lookup_file) {
 }
 
 void
-query_random(int ntimes) {
+query_random() {
     unsigned long *p;
     while (query_size < query_limit) {
         if (qaf == AF_INET) {
@@ -120,8 +120,7 @@ query_random(int ntimes) {
 
 void
 query_list() {
-    int i;
-    for (i = 0; i < query_size; i++) {
+    for (uint64_t i = 0; i < query_size; i++) {
         if (HAS_QUERY_NEXTHOP(&query_table[i])) {
             char buf[64], buf2[64];
             inet_ntop(qaf, query_table[i].destination, buf, sizeof(buf));

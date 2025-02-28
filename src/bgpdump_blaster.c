@@ -23,7 +23,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "netdb.h"
+#include <netdb.h>
 
 #include "bgpdump_blaster.h"
 #include "bgpdump_data.h"
@@ -170,7 +170,7 @@ log_enable(char *log_name) {
 }
 
 const char *
-keyval_get_key(struct keyval_ *keyval, int val) {
+keyval_get_key(struct keyval_ *keyval, u_int val) {
     struct keyval_ *ptr;
 
     ptr = keyval;
@@ -1051,7 +1051,7 @@ get_my_as(void) {
     if (autsiz) {
         return autnums[0];
     } else {
-        return 65535;
+        return DEFAULT_AS_NUM;
     }
 }
 
@@ -1289,11 +1289,33 @@ bgpdump_send_open_cb(struct timer_ *timer) {
     );
 }
 
+static char *
+parse_port_in_addr(char *addr, uint16_t *port) {
+    char *port_str = strrchr(addr, ':');
+    if (port_str != NULL &&
+        (strchr(addr, '.') || (port_str > addr && *(port_str - 1) == ']'))) {
+        *port_str = '\0';
+        if (addr[0] == '[') {
+            addr += 1;
+        }
+        port_str += 1;
+    } else {
+        return addr;
+    }
+
+    char *end;
+    int64_t port_num = strtol(port_str, &end, 10);
+    if (*end != '\0' || port_num < 1 || port_num > 65535) {
+        *port = 0;
+    }
+    *port = port_num;
+    return addr;
+}
+
 void
 bgpdump_connect_session_cb(struct timer_ *timer) {
     struct protoent *protoent;
     struct bgp_session_ *session;
-    char protoname[] = "tcp";
     int af, res;
     fd_set myset;
     struct timeval tv;
@@ -1306,21 +1328,40 @@ bgpdump_connect_session_cb(struct timer_ *timer) {
     memset(&session->addr6, 0, sizeof(session->addr6));
     memset(&session->stats, 0, sizeof(session->stats));
 
+    uint16_t port = BGP_TCP_PORT;
+    char *addr = parse_port_in_addr(blaster_addr, &port);
+    if (port == 0) {
+        LOG(ERROR,
+            "Failed to parse target port in %s: %s\n",
+            blaster_addr,
+            strerror(errno));
+        return;
+    }
+
     /* First figure out what addr family the socket shall be */
     af = 0;
-    if (inet_pton(AF_INET, blaster_addr, &session->addr4.sin_addr)) {
+    if (inet_pton(AF_INET, addr, &session->addr4.sin_addr)) {
         af = AF_INET;
-    } else if (inet_pton(AF_INET6, blaster_addr, &session->addr6.sin6_addr)) {
+    } else if (inet_pton(AF_INET6, addr, &session->addr6.sin6_addr)) {
         af = AF_INET6;
+    } else {
+        LOG(ERROR,
+            "Failed to parse target %s: %s\n",
+            blaster_addr,
+            strerror(errno));
+        return;
     }
 
     /* Get socket. */
-    protoent = getprotobyname(protoname);
-    if (!protoent) {
+    if (!(protoent = getprotobyname("tcp"))) {
         return;
     }
     session->sockfd = socket(af, SOCK_STREAM, protoent->p_proto);
     if (session->sockfd == -1) {
+        LOG(ERROR,
+            "Failed to create target socket %s: %s\n",
+            blaster_addr,
+            strerror(errno));
         return;
     }
 
@@ -1337,7 +1378,7 @@ bgpdump_connect_session_cb(struct timer_ *timer) {
     switch (af) {
     case AF_INET:
         session->addr4.sin_family = AF_INET;
-        session->addr4.sin_port = htons(BGP_TCP_PORT);
+        session->addr4.sin_port = htons(port);
 
         res = connect(
             session->sockfd,
@@ -1347,7 +1388,7 @@ bgpdump_connect_session_cb(struct timer_ *timer) {
         break;
     case AF_INET6:
         session->addr6.sin6_family = AF_INET6;
-        session->addr6.sin6_port = htons(BGP_TCP_PORT);
+        session->addr6.sin6_port = htons(port);
 
         res = connect(
             session->sockfd,

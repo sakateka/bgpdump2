@@ -75,40 +75,40 @@ const struct option longopts[] = {
 };
 
 const char opthelp[] = "\
--h, --help                Display this help and exit.\n\
--V, --version             Print the program version.\n\
--v, --verbose             Print verbose information.\n\
--d, --debug               Display debug information.\n\
--m, --compat-mode         Display in libbgpdump -m compatible mode.\n\
--b, --brief               List information (i.e., simple prefix-nexthops).\n\
--B, --blaster <addr>      Blast RIB to a BGP speaker.\n\
--D, --blaster-dump        Blast BGP stream to a file.\n\
--T, --prefix-limit        Prefix limit for Blaster mode.\n\
--S, --next-hop-self <addr> Overwrite nexthop attribute.\n\
--a, --autnum <asn>        Blaster Mode. Specify ASN.\n\
-                          At most %d ASNs can be specified.\n\
--w, --withdraw-delay      Blaster Mode. Send withdraw after <N> seconds.\n\
--P, --peer-table          Display the peer table and exit.\n\
--p, --peer <peer_index>   Specify peers by peer_index.\n\
-                          At most %d peers can be specified.\n\
--u, --diff                Shows unified diff. Specify two peers.\n\
--U, --diff-verbose        Shows the detailed info of unified diff.\n\
--r, --diff-table          Specify to create diff route_table.\n\
--c, --count               Count the route number.\n\
--j, --plen-dist           Count the route number by prefixlen.\n\
--k, --peer-stat           Shows prefix-length distribution.\n\
--N, --bufsiz              Specify the size of read buffer.\n\
-                          (default: %s)\n\
--M, --nroutes             Specify the size of the route_table.\n\
-                          (default: %s)\n\
--g, --benchmark           Measure the time to lookup.\n\
--q, --quiet               Minimal verbosity output\n\
--l, --lookup <addr>       Specify lookup address.\n\
--L, --lookup-file <file>  Specify lookup address from a file.\n\
--4, --ipv4                Specify that the query is IPv4. (default)\n\
--6, --ipv6                Specify that the query is IPv6.\n\
--H, --heatmap <file-prefix> Produces the heatmap.\n\
--t, --log <log-name>      Turn on logging.\n\
+-h, --help                     Display this help and exit.\n\
+-V, --version                  Print the program version.\n\
+-v, --verbose                  Print verbose information.\n\
+-d, --debug                    Display debug information.\n\
+-m, --compat-mode              Display in libbgpdump -m compatible mode.\n\
+-b, --brief                    List information (i.e., simple prefix-nexthops).\n\
+-B, --blaster <addr>[:port]    Blast RIB to a BGP speaker.\n\
+-D, --blaster-dump             Blast BGP stream to a file.\n\
+-T, --prefix-limit             Prefix limit for Blaster mode.\n\
+-S, --next-hop-self <addr>     Overwrite nexthop attribute.\n\
+-a, --autnum <asn>             Blaster Mode. Specify ASN. (default asn %d)\n\
+                               At most %d ASNs can be specified.\n\
+-w, --withdraw-delay           Blaster Mode. Send withdraw after <N> seconds.\n\
+-P, --peer-table               Display the peer table and exit.\n\
+-p, --peer <index>[,<index>]   Specify peers by peer_index.\n\
+                               At most %d peers can be specified.\n\
+-u, --diff                     Shows unified diff. Specify two peers.\n\
+-U, --diff-verbose             Shows the detailed info of unified diff.\n\
+-r, --diff-table               Specify to create diff route_table.\n\
+-c, --count                    Count the route number.\n\
+-j, --plen-dist                Count the route number by prefixlen.\n\
+-k, --peer-stat                Shows prefix-length distribution.\n\
+-N, --bufsiz                   Specify the size of read buffer.\n\
+                               (default: %s)\n\
+-M, --nroutes                  Specify the size of the route_table.\n\
+                               (default: %s)\n\
+-g, --benchmark                Measure the time to lookup.\n\
+-q, --quiet                    Minimal verbosity output\n\
+-l, --lookup <addr>            Specify lookup address.\n\
+-L, --lookup-file <file>       Specify lookup address from a file.\n\
+-4, --ipv4                     Specify that the query is IPv4. (default)\n\
+-6, --ipv6                     Specify that the query is IPv6.\n\
+-H, --heatmap <file-prefix>    Produces the heatmap.\n\
+-t, --log <log-name>           Turn on logging.\n\
 ";
 
 int longindex;
@@ -138,7 +138,7 @@ char *heatmap_prefix;
 int blaster = 0;
 char *blaster_addr = NULL;
 int blaster_dump = 0;
-int prefix_limit = 0;
+uint64_t prefix_limit = 0;
 int nhs = 0;
 struct sockaddr_in nhs_addr4;
 struct sockaddr_in6 nhs_addr6;
@@ -155,7 +155,8 @@ usage() {
     printf("Usage: %s [options] <file1> <file2> ...\n", progname);
     printf(
         opthelp,
-        PEER_INDEX_MAX,
+        DEFAULT_AS_NUM,
+        AUTLIM,
         PEER_INDEX_MAX,
         BGPDUMP_BUFSIZ_DEFAULT,
         ROUTE_LIMIT_DEFAULT
@@ -173,6 +174,7 @@ bgpdump_getopt(int argc, char **argv) {
     int status = 0;
     char *endptr;
     int val;
+    char *next_peer = 0;
 
     /*
      * Clear logging global.
@@ -216,13 +218,22 @@ bgpdump_getopt(int argc, char **argv) {
             peer_table_only++;
             break;
         case 'p':
-            val = strtoul(optarg, &endptr, 0);
-            if (*endptr != '\0') {
-                printf("malformed peer_index: %s\n", optarg);
-                exit(-1);
-            }
-            peer_spec_index[peer_spec_size % PEER_INDEX_MAX] = val;
-            peer_spec_size++;
+            do {
+                next_peer = strchr(optarg, ',');
+                if (next_peer != NULL) {
+                    *next_peer = '\0';
+                }
+                val = strtoul(optarg, &endptr, 0);
+                if (*endptr != '\0') {
+                    printf("malformed peer_index: %s\n", optarg);
+                    exit(-1);
+                }
+                peer_spec_index[peer_spec_size % PEER_INDEX_MAX] = val;
+                peer_spec_size++;
+                if (next_peer) {
+                    optarg = ++next_peer;
+                }
+            } while (next_peer && *optarg != '\0');
             break;
         case 'a':
             val = strtoul(optarg, &endptr, 0);

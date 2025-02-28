@@ -40,7 +40,7 @@ int peer_spec_index[PEER_INDEX_MAX];
 int peer_spec_size = 0;
 
 struct bgp_route *peer_route_table[PEER_INDEX_MAX];
-int peer_route_size[PEER_INDEX_MAX];
+uint64_t peer_route_size[PEER_INDEX_MAX];
 struct ptree *peer_ptree[PEER_INDEX_MAX];
 
 void

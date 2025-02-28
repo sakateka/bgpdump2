@@ -244,6 +244,8 @@ void
 bgpdump_process_table_v2_peer_index_table(
     struct mrt_header *h, struct mrt_info *info, char *data_end
 ) {
+    (void)info;
+
     char *p;
     int size;
     int i;
@@ -1123,6 +1125,8 @@ void
 bgpdump_process_table_v2_rib_entry(
     int index, char **q, struct mrt_info *info, char *data_end
 ) {
+    (void)info;
+
     char *p = *q;
     int size;
 
@@ -1254,7 +1258,7 @@ bgpdump_process_table_v2_rib_entry(
 
         if (peer_spec_size && (!blaster && !blaster_dump)) {
             struct bgp_route *rp;
-            int *route_size = &peer_route_size[peer_spec_i];
+            uint64_t *route_size = &peer_route_size[peer_spec_i];
             if (*route_size >= nroutes) {
                 printf("route table overflow.\n");
                 *route_size = nroutes - 1;

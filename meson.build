@@ -1,4 +1,13 @@
-project('bgpdump2', 'c', version: '2.0.14')
+project(
+  'bgpdump2',
+  'c',
+  version: '2.0.14',
+  default_options: [
+    'buildtype=release',
+    'warning_level=2',
+    'werror=true',
+  ],
+)
 
 conf = configuration_data()
 conf.set_quoted('PACKAGE_VERSION', meson.project_name() + '-' + meson.project_version())

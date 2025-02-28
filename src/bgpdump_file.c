@@ -99,6 +99,10 @@ bread(void *ptr, size_t size, size_t nitems, void *file) {
 
 size_t
 bwrite(void *ptr, size_t size, size_t nitems, void *file) {
+    (void)ptr;
+    (void)size;
+    (void)nitems;
+    (void)file;
     return 0;
 }
 
@@ -145,6 +149,10 @@ gread(void *ptr, size_t size, size_t nitems, void *file) {
 
 size_t
 gwrite(void *ptr, size_t size, size_t nitems, void *file) {
+    (void)ptr;
+    (void)size;
+    (void)nitems;
+    (void)file;
     return 0;
 }
 

@@ -25,6 +25,7 @@
 #define MIN(x, y) ((x) > (y) ? (y) : (x))
 #endif /*MIN*/
 
+#define DEFAULT_AS_NUM 65535
 #define AUTLIM 8
 extern unsigned long autnums[];
 extern int32_t autsiz;

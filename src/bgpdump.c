@@ -55,7 +55,6 @@ struct mrt_info info;
 struct ptree *ptree[AF_INET6 + 1];
 
 int qaf = AF_INET;
-
 unsigned long autnums[AUTLIM];
 int autsiz = 0;
 
@@ -478,6 +477,15 @@ main(int argc, char **argv) {
     if (verbose) {
         printf("bufsiz = %llu\n", bufsiz);
         printf("nroutes = %llu\n", nroutes);
+        printf("peer_indices = ");
+        for (i = 0; i < peer_spec_size; i++) {
+            char *comma = "";
+            if (i > 0) {
+                comma = ",";
+            }
+            printf("%s%d", comma, peer_spec_index[i]);
+        }
+        printf("\n");
     }
 
     /* default cmd */

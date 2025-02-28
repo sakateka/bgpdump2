@@ -85,7 +85,6 @@ peer_stat_finish() {
 
 void
 peer_stat_save(int peer_index, struct bgp_route *route, uint8_t prefix_length) {
-    int i;
     struct ptree *t;
     struct ptree_node *n;
     uint64_t count;
@@ -123,7 +122,7 @@ peer_stat_save(int peer_index, struct bgp_route *route, uint8_t prefix_length) {
 
     t = peer_stat[peer_index].as_path_count;
     path_size = MIN(route->path_size, ROUTE_PATH_LIMIT);
-    for (i = 0; i < path_size; i++)
+    for (uint32_t i = 0; i < path_size; i++)
         path_list[i] = htonl(route->path_list[i]);
     n = ptree_search_exact((char *)path_list, 32 * path_size, t);
     if (n) {

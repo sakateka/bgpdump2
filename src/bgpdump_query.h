@@ -38,6 +38,6 @@ query_file_count(char *lookup_file);
 void
 query_file(char *lookup_file);
 void
-query_random(int ntimes);
+query_random();
 void
 query_list();

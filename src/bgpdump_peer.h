@@ -38,7 +38,7 @@ struct peer {
 
 #define PEER_MAX 256
 
-#define PEER_INDEX_MAX 8
+#define PEER_INDEX_MAX 16
 
 extern struct peer peer_null;
 extern struct peer peer_table[];
@@ -48,7 +48,7 @@ extern int peer_spec_index[];
 extern int peer_spec_size;
 
 extern struct bgp_route *peer_route_table[];
-extern int peer_route_size[];
+extern uint64_t peer_route_size[];
 extern struct ptree *peer_ptree[];
 
 void

@@ -59,10 +59,9 @@ void
 ptree_query(
     struct ptree *ptree, struct query *query_table, uint64_t query_size
 ) {
-    int i;
     struct ptree_node *x;
 
-    for (i = 0; i < query_size; i++) {
+    for (uint64_t i = 0; i < query_size; i++) {
         char *query = query_table[i].destination;
         char *answer = query_table[i].nexthop;
         int plen = (qaf == AF_INET ? 32 : 128);
