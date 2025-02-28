@@ -451,8 +451,6 @@ heatmap_image_hilbert_data_aspath_max_distance(int peer_spec_i) {
 
 int
 main(int argc, char **argv) {
-    int status = 0;
-    int i;
     char *filename = NULL;
 
     progname = argv[0];
@@ -460,13 +458,12 @@ main(int argc, char **argv) {
     bufsiz = resolv_number(BGPDUMP_BUFSIZ_DEFAULT, NULL);
     nroutes = resolv_number(ROUTE_LIMIT_DEFAULT, NULL);
 
-    status = bgpdump_getopt(argc, argv);
+    int status = bgpdump_getopt(argc, argv);
+    if (status)
+        return status;
 
     argc -= optind;
     argv += optind;
-
-    if (status)
-        return status;
 
     if (argc == 0) {
         printf("specify rib files.\n");
@@ -478,14 +475,13 @@ main(int argc, char **argv) {
         printf("bufsiz = %llu\n", bufsiz);
         printf("nroutes = %llu\n", nroutes);
         printf("peer_indices = ");
-        for (i = 0; i < peer_spec_size; i++) {
-            char *comma = "";
+        for (int i = 0; i < peer_spec_size; i++) {
             if (i > 0) {
-                comma = ",";
+                putchar(',');
             }
-            printf("%s%d", comma, peer_spec_index[i]);
+            printf("%d", peer_spec_index[i]);
         }
-        printf("\n");
+        puts("");
     }
 
     /* default cmd */
@@ -506,9 +502,7 @@ main(int argc, char **argv) {
     peer_table_init();
 
     if (peer_spec_size && !blaster) {
-        if (peer_spec_size >= PEER_INDEX_MAX)
-            peer_spec_size = PEER_INDEX_MAX;
-        for (i = 0; i < peer_spec_size; i++) {
+        for (int i = 0; i < peer_spec_size; i++) {
             peer_route_table[i] = route_table_create();
             peer_route_size[i] = 0;
             peer_ptree[i] = ptree_create();
@@ -535,7 +529,7 @@ main(int argc, char **argv) {
     }
 
     /* for each rib files. */
-    for (i = 0; i < argc; i++) {
+    for (int i = 0; i < argc; i++) {
         filename = argv[i];
 
         file_format_t format;
@@ -626,7 +620,7 @@ main(int argc, char **argv) {
             benchmark_start();
 
         if (lookup) {
-            for (i = 0; i < peer_spec_size; i++) {
+            for (int i = 0; i < peer_spec_size; i++) {
                 printf("peer %d:\n", peer_spec_index[i]);
                 if (verbose)
                     ptree_list(peer_ptree[i]);
@@ -641,7 +635,7 @@ main(int argc, char **argv) {
     }
 
     if (heatmap) {
-        for (i = 0; i < peer_spec_size; i++) {
+        for (int i = 0; i < peer_spec_size; i++) {
             heatmap_image_hilbert_gplot(i);
             heatmap_image_hilbert_data(i);
             // heatmap_image_hilbert_data_aspath_max_distance (i);

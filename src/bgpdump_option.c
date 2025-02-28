@@ -220,20 +220,21 @@ bgpdump_getopt(int argc, char **argv) {
         case 'p':
             do {
                 next_peer = strchr(optarg, ',');
-                if (next_peer != NULL) {
-                    *next_peer = '\0';
-                }
                 val = strtoul(optarg, &endptr, 0);
-                if (*endptr != '\0') {
-                    printf("malformed peer_index: %s\n", optarg);
+                if ((*endptr != '\0' && *endptr != ',') || optarg == endptr) {
+                    printf("malformed peer_index: '%s'\n", optarg);
                     exit(-1);
                 }
-                peer_spec_index[peer_spec_size % PEER_INDEX_MAX] = val;
-                peer_spec_size++;
+                if (peer_index_add(val)) {
+                    printf(
+                        "too many peer indices, more then %d\n", PEER_INDEX_MAX
+                    );
+                    exit(-1);
+                }
                 if (next_peer) {
                     optarg = ++next_peer;
                 }
-            } while (next_peer && *optarg != '\0');
+            } while (next_peer && *next_peer != '\0' && *optarg != '\0');
             break;
         case 'a':
             val = strtoul(optarg, &endptr, 0);

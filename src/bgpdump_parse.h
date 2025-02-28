@@ -21,5 +21,7 @@
 
 unsigned long long
 resolv_number(char *notation, char **endptr);
+int
+peer_index_add(int val);
 
 #endif /*_BGPDUMP_PARSE_H_*/

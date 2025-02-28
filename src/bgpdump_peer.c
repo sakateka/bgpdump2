@@ -43,6 +43,21 @@ struct bgp_route *peer_route_table[PEER_INDEX_MAX];
 uint64_t peer_route_size[PEER_INDEX_MAX];
 struct ptree *peer_ptree[PEER_INDEX_MAX];
 
+int
+peer_index_add(int val) {
+    for (int i = 0; i < peer_spec_size; i++) {
+        if (peer_spec_index[i] == val) {
+            return 0;
+        }
+    }
+    if (peer_spec_size == PEER_INDEX_MAX) {
+        return -1;
+    }
+    peer_spec_index[peer_spec_size] = val;
+    peer_spec_size++;
+    return 0;
+}
+
 void
 peer_table_init() {
     memset(&peer_null, 0, sizeof(struct peer));

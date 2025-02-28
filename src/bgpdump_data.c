@@ -1152,7 +1152,7 @@ bgpdump_process_table_v2_rib_entry(
 
     int peer_spec_i = 0;
     peer_match = 0;
-    for (i = 0; i < MIN(peer_spec_size, PEER_INDEX_MAX); i++) {
+    for (i = 0; i < peer_spec_size; i++) {
         if (peer_index == peer_spec_index[i]) {
             peer_spec_i = i;
             peer_match++;
