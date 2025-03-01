@@ -19,6 +19,7 @@ enum log_id {
     KEEPALIVE,
     FSM,
     IO,
+    TRACE,
     DEBUG,
     INFO,
     WARN,
@@ -86,6 +87,7 @@ static struct logger loggers[LOG_ID_MAX] = {
     [KEEPALIVE] = {.name = "KPALVE"},
     [FSM] = {.name = "FSM"},
     [IO] = {.name = "IO"},
+    [TRACE] = {.name = "TRACE", .color_name = LOG_CYAN "TRACE" LOG_RESET},
     [DEBUG] = {.name = "DEBUG", .color_name = LOG_GRAY "DEBUG" LOG_RESET},
     [INFO] = {.name = "INFO", .color_name = LOG_BLUE "INFO" LOG_RESET},
     [WARN] = {.name = "WARN", .color_name = LOG_YELLOW "WARN" LOG_RESET},
@@ -147,6 +149,9 @@ log_enable_name(char *log_name) {
     }
     // enable leveled logs
     switch (lid) {
+    case TRACE:
+        loggers[TRACE].enable = 1;
+        // fallthrough
     case DEBUG:
         loggers[DEBUG].enable = 1;
         // fallthrough

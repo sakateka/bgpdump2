@@ -380,10 +380,10 @@ bgpdump_print_extd_comm(struct bgp_extd_comm *comm) {
     return buf;
 }
 
-#define OPTIONAL 0x80
-#define TRANSITIVE 0x40
-#define PARTIAL 0x20
-#define EXTENDED_LENGTH 0x10
+#define OPTIONAL 0b10000000
+#define TRANSITIVE 0b01000000
+#define PARTIAL 0b00100000
+#define EXTENDED 0b00010000
 
 #define ORIGIN 1
 #define AS_PATH 2
@@ -443,7 +443,7 @@ bgpdump_print_attrs(uint8_t atype, uint8_t aflags, uint16_t alen) {
         (aflags & OPTIONAL ? "optional" : "well-known"),
         (aflags & TRANSITIVE ? "transitive" : "non-transitive"),
         (aflags & PARTIAL ? "partial" : "complete"),
-        (aflags & EXTENDED_LENGTH ? ", extended-length" : "")
+        (aflags & EXTENDED ? ", extended-length" : "")
     );
     printf("  attr: %s <%s> (%#04x) len: %d\n", name, flags, atype, alen);
 }
@@ -485,8 +485,8 @@ _read_n(
     int line
 ) {
     _BUFFER_OVERRUN_CHECK(*r, len, end, file, line);
-    memcpy(buf, r, len);
-    r += len;
+    memcpy(buf, *r, len);
+    *r += len;
 }
 
 void
@@ -499,8 +499,12 @@ bgpdump_process_bgp_attributes(
         uint8_t attr_flags = read_u8(&p, end);
         uint8_t attr_type = read_u8(&p, end);
 
-        uint16_t attr_len = (attr_flags & EXTENDED_LENGTH) ? read_u16(&p, end)
-                                                           : read_u8(&p, end);
+        uint16_t attr_len =
+            attr_flags & EXTENDED ? read_u16(&p, end) : read_u8(&p, end);
+        LOG(TRACE,
+            "Attribute len=%d type=%s\n",
+            attr_len,
+            bgpdump_attr_name(attr_type));
 
         if (show && detail) {
             bgpdump_print_attrs(attr_type, attr_flags, attr_len);
@@ -556,7 +560,7 @@ bgpdump_process_bgp_attributes(
         case NEXT_HOP: {
             memset(route->nexthop, 0, sizeof(route->nexthop));
             read_n(route->nexthop, attr_len, &r, end);
-            route->nexthop_af = attr_len = 4 ? AF_INET : AF_INET6;
+            route->nexthop_af = attr_len == 4 ? AF_INET : AF_INET6;
             if (show && detail) {
                 char buf[64];
                 inet_ntop(route->af, route->nexthop, buf, sizeof(buf));
@@ -564,6 +568,9 @@ bgpdump_process_bgp_attributes(
             }
         } break;
 
+        case AGGREGATOR:
+            r += attr_len;
+            break;
         case ATOMIC_AGGREGATE:
             if (show && detail)
                 printf("    atomic_aggregate: len: %d\n", attr_len);
@@ -686,7 +693,7 @@ bgpdump_process_bgp_attributes(
                 read_n(
                     route->nexthop, MAX(len, sizeof(route->nexthop)), &r, end
                 );
-                route->nexthop_af = len = 4 ? AF_INET : AF_INET6;
+                route->nexthop_af = len == 4 ? AF_INET : AF_INET6;
 
                 if ((debug || verbose) && len == 2 * sizeof(struct in6_addr)) {
                     uint8_t nexthop2[16];
@@ -717,7 +724,7 @@ bgpdump_process_bgp_attributes(
                     if (byte_len == 0) {
                         continue;
                     }
-                    nlri_af = byte_len = 4 ? AF_INET : AF_INET6;
+                    nlri_af = byte_len == 4 ? AF_INET : AF_INET6;
                     read_n(nlri_prefix, byte_len, &r, end);
                     // TODO: remove copypaste
                     if (show && detail) {
