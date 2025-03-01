@@ -15,9 +15,7 @@
  * You should have received a copy of the GNU General Public License along
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#ifndef _BGPDUMP_PEER_H_
-#define _BGPDUMP_PEER_H_
+#pragma once
 
 #include <netinet/in.h>
 
@@ -44,8 +42,8 @@ extern struct peer peer_null;
 extern struct peer peer_table[];
 extern int peer_size;
 
-extern int peer_spec_index[];
-extern int peer_spec_size;
+extern int32_t peer_spec_index[];
+extern int32_t peer_spec_size;
 
 extern struct bgp_route *peer_route_table[];
 extern uint64_t peer_route_size[];
@@ -63,5 +61,5 @@ void
 peer_route_count_by_plen_show();
 void
 peer_route_count_by_plen_clear();
-
-#endif /*_BGPDUMP_PEER_H_*/
+char *
+fmt_peer_spec_index(char *buf, size_t buf_size);

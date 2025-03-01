@@ -123,3 +123,29 @@ peer_route_count_by_plen_clear() {
         for (j = 0; j < 33; j++)
             peer_table[i].route_count_by_plen[j] = 0;
 }
+
+char *
+fmt_peer_spec_index(char *buf, size_t buf_size) {
+    char *p = buf;
+    int64_t size = (int64_t)buf_size;
+    p[0] = '\0';
+
+    for (int i = 0; i < peer_spec_size; i++) {
+        if (size < 2) {
+            break;
+        }
+        if (i > 0) {
+            p[0] = ',';
+            p++;
+            size--;
+        }
+        int n = snprintf(p, size, "%d", peer_spec_index[i]);
+        if (n <= 0) {
+            break;
+        }
+        p += n;
+        size -= n;
+    }
+    buf[buf_size - 1] = '\0';
+    return buf;
+}

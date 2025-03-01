@@ -28,6 +28,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 
+#include "bgpdump_log.h"
 #include "bgpdump_query.h"
 #include "bgpdump_route.h"
 
@@ -46,7 +47,16 @@ query_init() {
 void
 query_addr(char *lookup_addr) {
     printf("looking up an address: %s\n", lookup_addr);
-    inet_pton(qaf, lookup_addr, query_table[query_size++].destination);
+    if (inet_pton(
+            AF_INET, lookup_addr, query_table[query_size++].destination
+        )) {
+    } else if (inet_pton(
+                   AF_INET6, lookup_addr, query_table[query_size++].destination
+               )) {
+    } else {
+        LOG(ERROR, "failed to parse lookup_addr: %s", lookup_addr);
+        exit(1);
+    }
 }
 
 unsigned long
@@ -90,30 +100,10 @@ query_file(char *lookup_file) {
         p = index(buf, '\n');
         if (p)
             *p = '\0';
-        inet_pton(qaf, buf, query_table[query_size++].destination);
+
+        query_addr(buf);
     }
     fclose(fp);
-}
-
-void
-query_random() {
-    unsigned long *p;
-    while (query_size < query_limit) {
-        if (qaf == AF_INET) {
-            p = (unsigned long *)&query_table[query_size].destination[0];
-            *p = random();
-        } else {
-            p = (unsigned long *)&query_table[query_size].destination[0];
-            *p = random();
-            p = (unsigned long *)&query_table[query_size].destination[4];
-            *p = random();
-            p = (unsigned long *)&query_table[query_size].destination[8];
-            *p = random();
-            p = (unsigned long *)&query_table[query_size].destination[12];
-            *p = random();
-        }
-        query_size++;
-    }
 }
 
 #define HAS_QUERY_NEXTHOP(q) (memcmp((q)->nexthop, addr_none, MAX_ADDR_LENGTH))
@@ -123,8 +113,9 @@ query_list() {
     for (uint64_t i = 0; i < query_size; i++) {
         if (HAS_QUERY_NEXTHOP(&query_table[i])) {
             char buf[64], buf2[64];
-            inet_ntop(qaf, query_table[i].destination, buf, sizeof(buf));
-            inet_ntop(qaf, query_table[i].nexthop, buf2, sizeof(buf2));
+            int af = query_table[i].plen == 4 ? AF_INET : AF_INET6;
+            inet_ntop(af, query_table[i].destination, buf, sizeof(buf));
+            inet_ntop(af, query_table[i].nexthop, buf2, sizeof(buf2));
             printf("destination: %s nexthop: %s\n", buf, buf2);
         }
     }

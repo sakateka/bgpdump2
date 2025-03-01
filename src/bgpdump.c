@@ -56,7 +56,7 @@ char *progname = NULL;
 struct mrt_info info;
 struct ptree *ptree[2];
 
-int qaf = AF_INET;
+int qaf = AF_INET6;
 unsigned long autnums[AUTLIM];
 int autsiz = 0;
 
@@ -460,14 +460,9 @@ main(int argc, char **argv) {
     if (log_enabled(INFO)) {
         LOG(INFO, "bufsiz = %llu\n", bufsiz);
         LOG(INFO, "nroutes = %llu\n", nroutes);
-        LOG(INFO, "peer_indices = ");
-        for (int i = 0; i < peer_spec_size; i++) {
-            if (i > 0) {
-                fprintf(stderr, ",");
-            }
-            fprintf(stderr, "%d", peer_spec_index[i]);
-        }
-        fprintf(stderr, "\n");
+        char buf[1024];
+        fmt_peer_spec_index(buf, sizeof(buf));
+        LOG(INFO, "peer_indices = [%s]\n", buf);
 
         LOG(INFO, "asn nums = ");
         for (int i = 0; i < autsiz; i++) {

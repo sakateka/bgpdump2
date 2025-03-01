@@ -32,7 +32,7 @@
 #include "bgpdump_route.h"
 
 void
-bgpdump_udiff_compare(uint32_t sequence_number) {
+bgpdump_udiff_compare(int af, uint32_t sequence_number) {
     struct bgp_route *route;
     struct bgp_route *rt0 = peer_route_table[0];
     struct bgp_route *rt1 = peer_route_table[1];
@@ -62,7 +62,7 @@ bgpdump_udiff_compare(uint32_t sequence_number) {
             route_print(route);
         } else {
             struct ptree_node *x;
-            int plen = (qaf == AF_INET ? 32 : 128);
+            int plen = (af == AF_INET ? 32 : 128);
             x = ptree_search(route->prefix, plen, pt1);
             if (x) {
                 /* only in left but also entirely reachable in right */
@@ -93,7 +93,7 @@ bgpdump_udiff_compare(uint32_t sequence_number) {
             route_print(route);
         } else {
             struct ptree_node *x;
-            int plen = (qaf == AF_INET ? 32 : 128);
+            int plen = (af == AF_INET ? 32 : 128);
             x = ptree_search(route->prefix, plen, pt0);
             if (x) {
                 /* only in right but also entirely reachable in left */

@@ -89,7 +89,7 @@ const char opthelp[] = "\
                                At most %d ASNs can be specified.\n\
 -w, --withdraw-delay           Blaster Mode. Send withdraw after <N> seconds.\n\
 -P, --peer-table               Display the peer table and exit.\n\
--p, --peer <index>[,<index>]   Specify peers by peer_index.\n\
+-p, --peer <index>[,<index>]   Select peers by peer_index (default all).\n\
                                At most %d peers can be specified.\n\
 -u, --diff                     Shows unified diff. Specify two peers.\n\
 -U, --diff-verbose             Shows the detailed info of unified diff.\n\

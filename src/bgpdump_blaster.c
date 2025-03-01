@@ -375,7 +375,7 @@ bgpdump_ribwalk_cb(struct timer_ *timer) {
     struct bgp_prefix_ *prefix;
     struct bgp_route route;
     struct ptree *t;
-    int peer_index, prefix_index;
+    int prefix_index;
     uint update_start_idx, tpa_length_idx, length;
     uint updates_encoded;
 
@@ -414,22 +414,23 @@ bgpdump_ribwalk_cb(struct timer_ *timer) {
     }
 
     if (!session->ribwalk_pnode) {
-        peer_index = peer_spec_index[session->ribwalk_peer_index];
+        int peer_index = session->ribwalk_peer_index;
+        if (peer_spec_size && session->ribwalk_peer_index < peer_spec_size) {
+            peer_index = peer_spec_index[session->ribwalk_peer_index];
+        }
 
+        if (peer_index >= peer_size) {
+            session->ribwalk_complete = true;
+            LOG(INFO, "RIB walk complete\n");
+            return;
+        }
         t = peer_table[peer_index].path_root;
         if (!t || !peer_table[peer_index].path_count) {
-
             /* Next RIB */
-            if (session->ribwalk_peer_index < peer_spec_size) {
-                session->ribwalk_peer_index++;
-            } else {
-                session->ribwalk_complete = true;
-                return;
-            }
+            session->ribwalk_peer_index++;
             session->ribwalk_pnode = NULL;
             session->ribwalk_prefix = NULL;
             session->ribwalk_prefix_index = 0;
-
             return;
         }
 
@@ -493,12 +494,7 @@ bgpdump_ribwalk_cb(struct timer_ *timer) {
                  */
                 if (!withdraw_delay ||
                     (withdraw_delay && session->ribwalk_withdraw)) {
-                    if (session->ribwalk_peer_index < peer_spec_size - 1) {
-                        session->ribwalk_peer_index++;
-                    } else {
-                        session->ribwalk_complete = true;
-                        LOG(INFO, "RIB walk complete\n");
-                    }
+                    session->ribwalk_peer_index++;
                 }
 
                 /*

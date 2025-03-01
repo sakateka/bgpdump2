@@ -5,7 +5,7 @@
 struct __attribute__((__packed__)) logger {
     uint8_t enable;
     char *name;
-    char *color_name;
+    char *color;
 };
 
 /*
@@ -32,9 +32,11 @@ enum log_id {
         if (log_enabled(log_level)) {                                          \
             fprintf(                                                           \
                 stderr,                                                        \
-                "%s [%-6s][%s:%d]: " fmt_,                                     \
+                "%s [%s%-6s%s][%s:%d]: " fmt_,                                 \
                 fmt_timestamp(),                                               \
+                log_color(log_level),                                          \
                 log_name(log_level),                                           \
+                log_color_reset(),                                             \
                 __FILE_NAME__,                                                 \
                 __LINE__,                                                      \
                 ##__VA_ARGS__                                                  \
@@ -59,6 +61,10 @@ log_reset();
 
 const char *
 log_name(enum log_id lid);
+const char *
+log_color(enum log_id lid);
+const char *
+log_color_reset();
 
 const char *
 fmt_timestamp();
@@ -79,19 +85,21 @@ fmt_timestamp();
 #define LOG_GRAY "\x1b[02;39m"
 #define LOG_RESET "\x1b[0m"
 
+char *__log_color_reset = LOG_RESET;
+
 static struct logger loggers[LOG_ID_MAX] = {
-    [TIMER] = {.name = "TIMER"},
-    [TIMER_DETAIL] = {.name = "TIMER2"},
-    [UPDATE] = {.name = "UPD"},
-    [UPDATE_DETAIL] = {.name = "UPD2"},
-    [KEEPALIVE] = {.name = "KPALVE"},
-    [FSM] = {.name = "FSM"},
-    [IO] = {.name = "IO"},
-    [TRACE] = {.name = "TRACE", .color_name = LOG_CYAN "TRACE" LOG_RESET},
-    [DEBUG] = {.name = "DEBUG", .color_name = LOG_GRAY "DEBUG" LOG_RESET},
-    [INFO] = {.name = "INFO", .color_name = LOG_BLUE "INFO" LOG_RESET},
-    [WARN] = {.name = "WARN", .color_name = LOG_YELLOW "WARN" LOG_RESET},
-    [ERROR] = {.name = "ERROR", .color_name = LOG_RED "ERROR" LOG_RESET},
+    [TIMER] = {.name = "TIMER", .color = ""},
+    [TIMER_DETAIL] = {.name = "TIMER2", .color = ""},
+    [UPDATE] = {.name = "UPD", .color = ""},
+    [UPDATE_DETAIL] = {.name = "UPD2", .color = ""},
+    [KEEPALIVE] = {.name = "KPALVE", .color = ""},
+    [FSM] = {.name = "FSM", .color = LOG_GREEN},
+    [IO] = {.name = "IO", .color = ""},
+    [TRACE] = {.name = "TRACE", .color = LOG_CYAN},
+    [DEBUG] = {.name = "DEBUG", .color = LOG_GRAY},
+    [INFO] = {.name = "INFO", .color = LOG_BLUE},
+    [WARN] = {.name = "WARN", .color = LOG_YELLOW},
+    [ERROR] = {.name = "ERROR", .color = LOG_RED},
 };
 
 const char *
@@ -112,11 +120,17 @@ fmt_timestamp() {
 
 inline const char *
 log_name(enum log_id lid) {
-    if (isatty(STDERR_FILENO) && loggers[lid].color_name) {
-        return loggers[lid].color_name;
-    } else {
-        return loggers[lid].name;
-    }
+    return loggers[lid].name;
+}
+
+inline const char *
+log_color(enum log_id lid) {
+    return loggers[lid].color;
+}
+
+inline const char *
+log_color_reset() {
+    return __log_color_reset;
 }
 
 inline uint8_t
@@ -147,6 +161,14 @@ log_enable_name(char *log_name) {
             break;
         }
     }
+    if (!isatty(STDERR_FILENO)) {
+        // NOTE: disable colors
+        for (uint64_t idx = 0; idx < sizeof(loggers) / sizeof(struct logger);
+             idx++) {
+            loggers[idx].color = "";
+        }
+        __log_color_reset = "";
+    }
     // enable leveled logs
     switch (lid) {
     case TRACE:
@@ -163,7 +185,9 @@ log_enable_name(char *log_name) {
         // fallthrough
     case ERROR:
         loggers[ERROR].enable = 1;
+        // fallthrough
     default:
+        break;
     }
 }
 #endif // LOG_IMPLEMENTATION

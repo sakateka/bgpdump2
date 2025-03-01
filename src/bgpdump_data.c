@@ -774,8 +774,8 @@ bgpdump_process_bgp_attributes(
         }
 
         if (r != p + attr_len) {
-            LOG(ERROR,
-                "failed to parse attribute, unparsed=%ld\n",
+            LOG(DEBUG,
+                "ERROR: failed to parse attribute, unparsed=%ld\n",
                 (p + attr_len) - r);
         }
         p += attr_len;
@@ -1296,14 +1296,12 @@ bgpdump_process_table_v2_rib_entry(
             }
         }
 
-        if (qaf == af) {
-            if (brief && !quiet)
-                route_print_brief(&route);
-            else if (show && !quiet)
-                route_print(&route);
-            else if (compat_mode && !quiet)
-                route_print_compat(&route);
-        }
+        if (brief && !quiet)
+            route_print_brief(&route);
+        else if (show && !quiet)
+            route_print(&route);
+        else if (compat_mode && !quiet)
+            route_print_compat(&route);
     }
 
     BUFFER_OVERRUN_CHECK(p, attribute_length, data_end)
@@ -1357,7 +1355,7 @@ bgpdump_process_table_v2_rib_unicast(
     }
 
     if (udiff) {
-        bgpdump_udiff_compare(sequence_number);
+        bgpdump_udiff_compare(af, sequence_number);
 
 #if 0
       struct bgp_route *route;

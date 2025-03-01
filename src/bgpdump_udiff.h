@@ -22,6 +22,6 @@
 #include <stdint.h>
 
 void
-bgpdump_udiff_compare(uint32_t sequence_number);
+bgpdump_udiff_compare(int af, uint32_t sequence_number);
 
 #endif /*_BGPDUMP_UDIFF_H_*/
