@@ -26,7 +26,7 @@ Usage: build/src/bgpdump2 [options] <file1> <file2> ...
                                At most 8 ASNs can be specified.
 -w, --withdraw-delay           Blaster Mode. Send withdraw after <N> seconds.
 -P, --peer-table               Display the peer table and exit.
--p, --peer <index>[,<index>]   Specify peers by peer_index.
+-p, --peer <index>[,<index>]   Specify peers by peer_index. (default all)
                                At most 16 peers can be specified.
 -u, --diff                     Shows unified diff. Specify two peers.
 -U, --diff-verbose             Shows the detailed info of unified diff.
