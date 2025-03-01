@@ -511,7 +511,7 @@ bgpdump_ribwalk_cb(struct timer_ *timer) {
                 bgpdump_send_eor(session, bgp_path->af, bgp_path->safi);
 
                 bgpdump_fflush(session);
-                LOG(INFO,
+                LOG(DEBUG,
                     "Sent %u updates, %u prefixes sent, %u prefixes withdrawn, "
                     "%u octets\n",
                     session->stats.updates_sent,
@@ -603,8 +603,6 @@ bgpdump_ribwalk_cb(struct timer_ *timer) {
             session->write_idx += filtered_path_length;
 
             if (log_enabled(UPDATE)) {
-                int old_show, old_detail;
-
                 memset(&route, 0, sizeof(route));
                 LOG(UPDATE,
                     "Encode path %p, length %u, refcount %u\n",
@@ -612,17 +610,11 @@ bgpdump_ribwalk_cb(struct timer_ *timer) {
                     bgp_path->path_length,
                     bgp_path->refcount);
 
-                old_show = show;
-                old_detail = detail;
-                show = 1;
-                detail = 1;
                 bgpdump_process_bgp_attributes(
                     &route,
                     session->ribwalk_pnode->key,
                     session->ribwalk_pnode->key + bgp_path->path_length
                 );
-                show = old_show;
-                detail = old_detail;
             }
         } else {
 
@@ -875,7 +867,7 @@ bgpdump_ribwalk_cb(struct timer_ *timer) {
     }
 
     if (updates_encoded) {
-        LOG(INFO,
+        LOG(DEBUG,
             "Sent %u updates, %u prefixes sent, %u prefixes withdrawn, %u "
             "octets\n",
             session->stats.updates_sent,

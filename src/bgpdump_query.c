@@ -67,7 +67,7 @@ query_file_count(char *lookup_file) {
 
     fp = fopen(lookup_file, "r");
     if (fp == NULL) {
-        printf("warning: couldn't open file: %s\n", lookup_file);
+        LOG(WARN, "couldn't open file: %s\n", lookup_file);
         return 0;
     }
 

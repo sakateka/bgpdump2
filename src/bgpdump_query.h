@@ -21,6 +21,7 @@
 
 struct query {
     uint8_t destination[MAX_ADDR_LENGTH];
+    // TODO: set plen
     int plen;
     uint8_t nexthop[MAX_ADDR_LENGTH];
 };

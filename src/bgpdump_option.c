@@ -39,21 +39,21 @@ extern int optopt;
 extern int opterr;
 extern int optreset;
 
-const char *optstring = "hVvdmbPp:a:uUrcjJ:kN:M:gl:L:46H:qf:G:B:S:t:DT:w:";
+const char *optstring = "hVmbB:w:DT:S:Pp:a:uUrcjkN:M:gL:f:H:l:";
 const struct option longopts[] = {
     {"help", no_argument, NULL, 'h'},
     {"version", no_argument, NULL, 'V'},
-    {"verbose", no_argument, NULL, 'v'},
-    {"debug", no_argument, NULL, 'd'},
     {"compat-mode", no_argument, NULL, 'm'},
     {"brief", no_argument, NULL, 'b'},
     {"blaster", required_argument, NULL, 'B'},
+    {"withdraw-delay", required_argument, NULL, 'w'},
     {"blaster-dump", no_argument, NULL, 'D'},
+    {"prefix-limit", required_argument, NULL, 'T'},
     {"next-hop-self", required_argument, NULL, 'S'},
-    {"quite", no_argument, NULL, 'q'},
     {"peer-table", no_argument, NULL, 'P'},
     {"peer", required_argument, NULL, 'p'},
     {"autnum", required_argument, NULL, 'a'},
+
     {"diff", no_argument, NULL, 'u'},
     {"diff-verbose", no_argument, NULL, 'U'},
     {"diff-table", no_argument, NULL, 'r'},
@@ -61,63 +61,49 @@ const struct option longopts[] = {
     {"plen-dist", no_argument, NULL, 'j'},
     {"peer-stat", no_argument, NULL, 'k'},
     {"bufsiz", required_argument, NULL, 'N'},
+
     {"nroutes", required_argument, NULL, 'M'},
+
     {"benchmark", no_argument, NULL, 'g'},
-    {"lookup", required_argument, NULL, 'l'},
-    {"lookup-file", required_argument, NULL, 'L'},
-    {"ipv4", no_argument, NULL, '4'},
-    {"ipv6", no_argument, NULL, '6'},
+    {"lookup", required_argument, NULL, 'L'},
+    {"lookup-file", required_argument, NULL, 'f'},
     {"heatmap", required_argument, NULL, 'H'},
-    {"log", required_argument, NULL, 't'},
-    {"prefix-limit", required_argument, NULL, 'T'},
-    {"withdraw-delay", required_argument, NULL, 'w'},
+    {"log", required_argument, NULL, 'l'},
     {NULL, 0, NULL, 0}
 };
 
 const char opthelp[] = "\
--h, --help                     Display this help and exit.\n\
--V, --version                  Print the program version.\n\
--v, --verbose                  Print verbose information.\n\
--d, --debug                    Display debug information.\n\
--m, --compat-mode              Display in libbgpdump -m compatible mode.\n\
--b, --brief                    List information (i.e., simple prefix-nexthops).\n\
--B, --blaster <addr>[:port]    Blast RIB to a BGP speaker.\n\
--D, --blaster-dump             Blast BGP stream to a file.\n\
--T, --prefix-limit             Prefix limit for Blaster mode.\n\
--S, --next-hop-self <addr>     Overwrite nexthop attribute.\n\
--a, --autnum <asn>             Blaster Mode. Specify ASN. (default asn %d)\n\
-                               At most %d ASNs can be specified.\n\
--w, --withdraw-delay           Blaster Mode. Send withdraw after <N> seconds.\n\
--P, --peer-table               Display the peer table and exit.\n\
--p, --peer <index>[,<index>]   Select peers by peer_index (default all).\n\
-                               At most %d peers can be specified.\n\
--u, --diff                     Shows unified diff. Specify two peers.\n\
--U, --diff-verbose             Shows the detailed info of unified diff.\n\
--r, --diff-table               Specify to create diff route_table.\n\
--c, --count                    Count the route number.\n\
--j, --plen-dist                Count the route number by prefixlen.\n\
--k, --peer-stat                Shows prefix-length distribution.\n\
--N, --bufsiz                   Specify the size of read buffer.\n\
-                               (default: %s)\n\
--M, --nroutes                  Specify the size of the route_table.\n\
-                               (default: %s)\n\
--g, --benchmark                Measure the time to lookup.\n\
--q, --quiet                    Minimal verbosity output\n\
--l, --lookup <addr>            Specify lookup address.\n\
--L, --lookup-file <file>       Specify lookup address from a file.\n\
--4, --ipv4                     Specify that the query is IPv4. (default)\n\
--6, --ipv6                     Specify that the query is IPv6.\n\
--H, --heatmap <file-prefix>    Produces the heatmap.\n\
--t, --log <log-name>           Turn on logging.\n\
+-h, --help                      Display this help and exit.\n\
+-V, --version                   Print the program version.\n\
+-m, --compat-mode               Display in libbgpdump -m compatible mode.\n\
+-b, --brief                     List information (i.e., simple prefix-nexthops).\n\
+-B, --blaster <addr>[:port]     Blast RIB to a BGP speaker.\n\
+-w, --withdraw-delay  <secs>    Blaster Mode. Send withdraw after <N> seconds.\n\
+-D, --blaster-dump              Blast BGP stream to a file.\n\
+-T, --prefix-limit              Prefix limit for Blaster mode.\n\
+-S, --next-hop-self <addr>      Overwrite nexthop attribute.\n\
+-P, --peer-table                Display the peer table and exit.\n\
+-p, --peer <index>[,<index>]    Select peers by peer_index (max %d) (default all).\n\
+-a, --autnum <asn> [-a ...]     Blaster Mode. Specify ASN (max %d) (default asn %d).\n\
+-u, --diff                      Shows unified diff. Specify two peers.\n\
+-U, --diff-verbose              Shows the detailed info of unified diff.\n\
+-r, --diff-table                Specify to create diff route_table.\n\
+-c, --count                     Count the route number.\n\
+-j, --plen-dist                 Count the route number by prefixlen.\n\
+-k, --peer-stat                 Shows prefix-length distribution.\n\
+\
+-N, --bufsiz                    Specify the size of read buffer (default: %s).\n\
+-M, --nroutes                   Specify the size of the route_table (default: %s).\n\
+\
+-g, --benchmark                 Measure the time to lookup.\n\
+-L, --lookup <addr>             Specify lookup address.\n\
+-f, --lookup-file <file>        Specify lookup address from a file.\n\
+-H, --heatmap <file-prefix>     Produces the heatmap.\n\
+-l, --log <trace|debug|info...> Turn on logging.\n\
 ";
 
 int longindex;
 
-int quiet = 0;
-int verbose = 0;
-int detail = 0;
-int debug = 0;
-int show = 0;
 int compat_mode = 0;
 int brief = 0;
 int peer_table_only = 0;
@@ -155,9 +141,9 @@ usage() {
     printf("Usage: %s [options] <file1> <file2> ...\n", progname);
     printf(
         opthelp,
-        DEFAULT_AS_NUM,
-        AUTLIM,
         PEER_INDEX_MAX,
+        AUTLIM,
+        DEFAULT_AS_NUM,
         BGPDUMP_BUFSIZ_DEFAULT,
         ROUTE_LIMIT_DEFAULT
     );
@@ -190,22 +176,31 @@ bgpdump_getopt(int argc, char **argv) {
             version();
             exit(0);
             break;
-        case 'v':
-            verbose++;
-            if (verbose >= 2)
-                detail++;
-            break;
-        case 'd':
-            debug++;
-            break;
-        case 'q':
-            quiet++;
-            break;
         case 'm':
             compat_mode++;
             break;
         case 'b':
             brief++;
+            break;
+        case 'B':
+            blaster++;
+            blaster_addr = optarg;
+            break;
+        case 'w':
+            withdraw_delay = strtoul(optarg, &endptr, 0);
+            break;
+        case 'D':
+            blaster_dump++;
+            break;
+        case 'T':
+            prefix_limit = strtoul(optarg, &endptr, 0);
+            break;
+        case 'S':
+            if (inet_pton(AF_INET, optarg, &nhs_addr4.sin_addr)) {
+                nhs = AF_INET;
+            } else if (inet_pton(AF_INET6, optarg, &nhs_addr6.sin6_addr)) {
+                nhs = AF_INET6;
+            }
             break;
 
         case 'P':
@@ -268,7 +263,6 @@ bgpdump_getopt(int argc, char **argv) {
         case 'k':
             stats++;
             break;
-
         case 'N':
             bufsiz = resolv_number(optarg, &endptr);
             if (*endptr != '\0') {
@@ -283,47 +277,24 @@ bgpdump_getopt(int argc, char **argv) {
                 exit(-1);
             }
             break;
-        case 'l':
-            lookup++;
-            lookup_addr = optarg;
+
+        case 'g':
+            benchmark++;
             break;
         case 'L':
             lookup++;
+            lookup_addr = optarg;
+            break;
+        case 'f':
+            lookup++;
             lookup_file = optarg;
             break;
-        case 'B':
-            blaster++;
-            blaster_addr = optarg;
-            break;
-        case 'D':
-            blaster_dump++;
-            break;
-        case 'T':
-            prefix_limit = strtoul(optarg, &endptr, 0);
-            break;
-        case 'S':
-            if (inet_pton(AF_INET, optarg, &nhs_addr4.sin_addr)) {
-                nhs = AF_INET;
-            } else if (inet_pton(AF_INET6, optarg, &nhs_addr6.sin6_addr)) {
-                nhs = AF_INET6;
-            }
-            break;
-        case 'w':
-            withdraw_delay = strtoul(optarg, &endptr, 0);
-            break;
-        case 't':
-            log_enable_name(optarg);
-            break;
-        case '4':
-            qaf = AF_INET;
-            break;
-        case '6':
-            qaf = AF_INET6;
-            break;
-
         case 'H':
             heatmap++;
             heatmap_prefix = optarg;
+            break;
+        case 'l':
+            log_enable_name(optarg);
             break;
 
         case 0:

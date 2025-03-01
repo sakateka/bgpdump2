@@ -27,6 +27,7 @@
 
 #include "ptree.h"
 
+#include "bgpdump_log.h"
 #include "bgpdump_option.h"
 #include "bgpdump_peer.h"
 #include "bgpdump_peerstat.h"
@@ -172,23 +173,20 @@ peer_stat_show() {
         else
             continue;
 
-        printf("peer[%d]:\n", index);
-
-        printf(
-            "Number of routes: %llu\n",
-            (unsigned long long)peer_stat[index].route_count
-        );
-        printf("Number of routes per plen:");
+        LOG(INFO, "peer[%d]:\n", index);
+        LOG(INFO, "Number of routes: %lu\n", peer_stat[index].route_count);
+        LOG(INFO, "Number of routes per plen:");
         for (j = 0; j < 33; j++) {
             if (j % 5 == 0)
-                printf("\n");
-            printf(
+                fprintf(stderr, "\n");
+            fprintf(
+                stderr,
                 "    /%-2d: %6llu",
                 j,
                 (unsigned long long)peer_stat[index].route_count_by_plen[j]
             );
         }
-        printf("\n");
+        fprintf(stderr, "\n");
 
         count = 0;
         t = peer_stat[index].nexthop_count;
@@ -201,13 +199,7 @@ peer_stat_show() {
             inet_ntop(AF_INET, &val, buf, sizeof(buf));
             data = (uint64_t)n->data;
 
-            if (verbose)
-                printf(
-                    "nexthop: %s/%d: count: %llu\n",
-                    buf,
-                    n->keylen,
-                    (unsigned long long)data
-                );
+            LOG(DEBUG, "nexthop: %s/%d: count: %lu\n", buf, n->keylen, data);
             count++;
         }
         printf("Number of nexthops: %lu\n", (unsigned long)count);
@@ -223,16 +215,10 @@ peer_stat_show() {
             val = ntohl(netval);
             data = (uint64_t)n->data;
 
-            if (verbose)
-                printf(
-                    "origin_as: %lu/%d: count: %llu\n",
-                    (unsigned long)val,
-                    n->keylen,
-                    (unsigned long long)data
-                );
+            LOG(DEBUG, "origin_as: %u/%d: count: %lu\n", val, n->keylen, data);
             count++;
         }
-        printf("Number of origin_as: %lu\n", (unsigned long)count);
+        LOG(INFO, "Number of origin_as: %lu\n", (unsigned long)count);
 
         count = 0;
         t = peer_stat[index].as_path_count;
@@ -243,21 +229,21 @@ peer_stat_show() {
             uint32_t *p;
             data = (uint64_t)n->data;
 
-            if (verbose) {
-                printf("unique as path:[");
+            if (log_enabled(DEBUG)) {
+                LOG(DEBUG, "unique as path:[");
                 for (p = (uint32_t *)n->key;
                      (void *)p < (void *)n->key + ((n->keylen + 7) / 8);
                      p++) {
                     if ((void *)n->key < (void *)p)
-                        printf(" ");
+                        fprintf(stderr, " ");
                     val = ntohl(*p);
-                    printf("%lu", (unsigned long)val);
+                    fprintf(stderr, "%lu", (unsigned long)val);
                 }
-                printf("]: count: %llu\n", (unsigned long long)data);
+                fprintf(stderr, "]: count: %llu\n", (unsigned long long)data);
             }
             count++;
         }
-        printf("Number of unique as paths: %lu\n", (unsigned long)count);
+        LOG(INFO, "Number of unique as paths: %lu\n", (unsigned long)count);
 
         count = 0;
         t = peer_stat[index].as_path_len_count;
@@ -265,19 +251,13 @@ peer_stat_show() {
             if (!n->data)
                 continue;
 
-            uint8_t len = 0;
-            len = *(uint8_t *)n->key;
+            uint8_t len = *(uint8_t *)n->key;
             data = (uint64_t)n->data;
 
-            if (verbose)
-                printf(
-                    "as_path_len: %d/%d: count: %llu\n",
-                    (int)len,
-                    n->keylen,
-                    (unsigned long long)data
-                );
+            LOG(DEBUG, "as_path_len: %d/%d: count: %lu\n", len, n->keylen, data
+            );
             count++;
         }
-        printf("Number of as path len: %lu\n", (unsigned long)count);
+        LOG(INFO, "Number of as path len: %lu\n", (unsigned long)count);
     }
 }

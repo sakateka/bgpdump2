@@ -40,7 +40,7 @@ struct bgp_route *routes;
 int route_limit = 0;
 int route_size = 0;
 
-char addr_none[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+uint8_t addr_none[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 void
 route_init() {

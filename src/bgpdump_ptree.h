@@ -23,5 +23,5 @@ void
 ptree_list(struct ptree *ptree);
 void
 ptree_query(
-    int af, struct ptree *ptree, struct query *query_table, uint64_t query_size
+    struct ptree *ptree, struct query *query_table, uint64_t query_size
 );

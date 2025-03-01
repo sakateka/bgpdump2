@@ -99,8 +99,8 @@ bgpdump_process(uint8_t *buf, size_t *data_len) {
         if (p + hsize < data_end) {
             h = (struct mrt_header *)p;
             len = ntohl(h->length);
-            LOG(DEBUG, "next mrt message: length: %lu bytes.\n", len);
-            LOG(DEBUG,
+            LOG(TRACE, "next mrt message: length: %lu bytes.\n", len);
+            LOG(TRACE,
                 "p: %p hsize: %d len: %lu mrt-end: %p data_end: %p\n",
                 p,
                 hsize,
@@ -474,11 +474,6 @@ main(int argc, char **argv) {
         fprintf(stderr, "\n");
     }
 
-    /* default cmd */
-    if (!brief && !show && !route_count && !plen_dist && !udiff && !lookup &&
-        !peer_table_only && !stats && !compat_mode && !autsiz && !heatmap)
-        show++;
-
     if (stats)
         peer_stat_init();
 
@@ -601,10 +596,10 @@ main(int argc, char **argv) {
 
         if (lookup) {
             for (int i = 0; i < peer_spec_size; i++) {
-                printf("peer %d:\n", peer_spec_index[i]);
-                if (verbose)
+                LOG(INFO, "peer %d:\n", peer_spec_index[i]);
+                if (log_enabled(DEBUG))
                     ptree_list(peer_ptree[i]);
-                ptree_query(qaf, peer_ptree[i], query_table, query_size);
+                ptree_query(peer_ptree[i], query_table, query_size);
             }
         }
 

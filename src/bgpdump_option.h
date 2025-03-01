@@ -22,11 +22,6 @@
 #include <stdint.h>
 #define BGPDUMP_BUFSIZ_DEFAULT "16MiB"
 
-extern int quiet;
-extern int debug;
-extern int detail;
-extern int verbose;
-extern int show;
 extern int brief;
 extern int compat_mode;
 extern int udiff;

@@ -83,7 +83,7 @@ bgpdump_process_mrt_header(struct mrt_header *h, struct mrt_info *info) {
 
     newtime = ntohl(h->timestamp);
 
-    if (verbose && timestamp != newtime) {
+    if (log_enabled(DEBUG) && timestamp != newtime) {
         struct tm *tm;
         char timebuf[64];
         time_t clock;
@@ -108,7 +108,7 @@ bgpdump_process_mrt_header(struct mrt_header *h, struct mrt_info *info) {
     info->subtype = ntohs(h->subtype);
     info->length = ntohl(h->length);
 
-    LOG(DEBUG,
+    LOG(TRACE,
         "MRT Header: ts: %u type: %hu sub: %hu len: %u\n",
         timestamp,
         mrt_type,
@@ -184,7 +184,7 @@ bgpdump_table_v2_peer_entry(
     } else {
         inet_ntop(af, &ipv6_addr, buf2, sizeof(buf2));
     }
-    if (show && (debug || detail)) {
+    if (log_enabled(DEBUG)) {
         printf(
             "Peer[%d]: Type: %s%s%s(%#02x) "
             "BGP ID: %-15s AS: %-5u Address: %-15s\n",
@@ -213,7 +213,7 @@ bgpdump_table_v2_peer_entry(
         new.ipv6_root = ptree_create();
         new.path_root = ptree_create();
 
-        if (verbose || peer_table_only ||
+        if (log_enabled(DEBUG) || peer_table_only ||
             (memcmp(&peer_table[index], &peer_null, sizeof(struct peer)) &&
              memcmp(&peer_table[index], &new, sizeof(struct peer)))) {
             printf("# peer_table[%d] changed: ", index);
@@ -289,12 +289,12 @@ bgpdump_process_table_v2_peer_index_table(
     peer_count = ntohs(*(uint16_t *)p);
     p += size;
 
-    if (peer_table_only || (show && (debug || detail))) {
+    if (peer_table_only || log_enabled(DEBUG)) {
         inet_ntop(AF_INET, &collector_bgp_id, buf, sizeof(buf));
-        printf("Collector BGP ID: %s\n", buf);
-        printf("View Name Length: %d\n", (int)view_name_length);
-        printf("View Name: %s\n", view_name);
-        printf("Peer Count: %d\n", (int)peer_count);
+        LOG(DEBUG, "Collector BGP ID: %s\n", buf);
+        LOG(DEBUG, "View Name Length: %d\n", (int)view_name_length);
+        LOG(DEBUG, "View Name: %s\n", view_name);
+        LOG(DEBUG, "Peer Count: %d\n", (int)peer_count);
     }
 
     for (i = 0; i < peer_count; i++) {
@@ -506,7 +506,7 @@ bgpdump_process_bgp_attributes(
             attr_len,
             bgpdump_attr_name(attr_type));
 
-        if (show && detail) {
+        if (log_enabled(DEBUG)) {
             bgpdump_print_attrs(attr_type, attr_flags, attr_len);
         }
 
@@ -514,7 +514,7 @@ bgpdump_process_bgp_attributes(
         BUFFER_OVERRUN_CHECK(r, attr_len, end)
         switch (attr_type) {
         case ORIGIN:
-            if (show && detail)
+            if (log_enabled(DEBUG))
                 printf("    origin: %d\n", *r);
             route->origin = read_u8(&r, end);
             break;
@@ -524,7 +524,7 @@ bgpdump_process_bgp_attributes(
                 uint8_t stype = read_u8(&r, end);
                 uint8_t path_size = read_u8(&r, end);
 
-                if (show && detail)
+                if (log_enabled(DEBUG))
                     printf(
                         "    as_path[%s:%d]:",
                         (stype == 1 ? "set" : "seq"),
@@ -535,13 +535,13 @@ bgpdump_process_bgp_attributes(
                 for (int i = 0; i < path_size; i++) {
                     uint32_t as_path = read_u32(&r, end);
 
-                    if (show && detail)
+                    if (log_enabled(DEBUG))
                         printf(" %u", as_path);
 
                     if (i < ROUTE_PATH_LIMIT)
                         route->path_list[i] = as_path;
                     else {
-                        if (show && detail)
+                        if (log_enabled(DEBUG))
                             printf("\n");
                         LOG(ERROR, "path_list buffer overflow.\n");
                         route_print(route);
@@ -552,7 +552,7 @@ bgpdump_process_bgp_attributes(
                     }
                 }
 
-                if (show && detail)
+                if (log_enabled(DEBUG))
                     printf("\n");
             }
         } break;
@@ -561,7 +561,7 @@ bgpdump_process_bgp_attributes(
             memset(route->nexthop, 0, sizeof(route->nexthop));
             read_n(route->nexthop, attr_len, &r, end);
             route->nexthop_af = attr_len == 4 ? AF_INET : AF_INET6;
-            if (show && detail) {
+            if (log_enabled(DEBUG)) {
                 char buf[64];
                 inet_ntop(route->af, route->nexthop, buf, sizeof(buf));
                 printf("    nexthop: %s\n", buf);
@@ -572,7 +572,7 @@ bgpdump_process_bgp_attributes(
             r += attr_len;
             break;
         case ATOMIC_AGGREGATE:
-            if (show && detail)
+            if (log_enabled(DEBUG))
                 printf("    atomic_aggregate: len: %d\n", attr_len);
             route->atomic_aggregate++;
             break;
@@ -580,14 +580,14 @@ bgpdump_process_bgp_attributes(
         case LOCAL_PREF:
             route->localpref_set = 1;
             route->localpref = read_u32(&r, end);
-            if (show && detail)
+            if (log_enabled(DEBUG))
                 printf("    local-pref: %u\n", route->localpref);
             break;
 
         case MULTI_EXIT_DISC:
             route->med_set = 1;
             route->med = read_u32(&r, end);
-            if (show && detail)
+            if (log_enabled(DEBUG))
                 printf("    med: %u\n", route->med);
             break;
 
@@ -600,7 +600,7 @@ bgpdump_process_bgp_attributes(
             for (int idx = 0; idx < route->community_size; idx++) {
                 route->community[idx] = read_u32(&r, end);
 
-                if (show && detail) {
+                if (log_enabled(DEBUG)) {
                     printf(
                         "%s %u:%u",
                         idx ? "," : "    community:",
@@ -610,7 +610,7 @@ bgpdump_process_bgp_attributes(
                 }
             }
 
-            if (show && detail)
+            if (log_enabled(DEBUG))
                 printf("\n");
         } break;
         case EXTENDED_COMMUNITY: {
@@ -627,7 +627,7 @@ bgpdump_process_bgp_attributes(
                     end
                 );
 
-                if (show && detail) {
+                if (log_enabled(DEBUG)) {
                     printf(
                         "%s %s",
                         idx ? "," : "    extended-community:",
@@ -636,7 +636,7 @@ bgpdump_process_bgp_attributes(
                 }
             }
 
-            if (show && detail)
+            if (log_enabled(DEBUG))
                 printf("\n");
         } break;
 
@@ -651,7 +651,7 @@ bgpdump_process_bgp_attributes(
                 route->large_community[idx].local1 = read_u32(&r, end);
                 route->large_community[idx].local2 = read_u32(&r, end);
 
-                if (show && detail) {
+                if (log_enabled(DEBUG)) {
                     printf(
                         "%s %u:%u:%u",
                         idx ? "," : "    large-community:",
@@ -662,7 +662,7 @@ bgpdump_process_bgp_attributes(
                 }
             }
 
-            if (show && detail)
+            if (log_enabled(DEBUG))
                 printf("\n");
         } break;
 
@@ -695,7 +695,7 @@ bgpdump_process_bgp_attributes(
                 );
                 route->nexthop_af = len == 4 ? AF_INET : AF_INET6;
 
-                if ((debug || verbose) && len == 2 * sizeof(struct in6_addr)) {
+                if (log_enabled(DEBUG) && len == 2 * sizeof(struct in6_addr)) {
                     uint8_t nexthop2[16];
                     char bufn1[64], bufn2[64];
                     memset(nexthop2, 0, sizeof(nexthop2));
@@ -727,7 +727,7 @@ bgpdump_process_bgp_attributes(
                     nlri_af = byte_len == 4 ? AF_INET : AF_INET6;
                     read_n(nlri_prefix, byte_len, &r, end);
                     // TODO: remove copypaste
-                    if (show && detail) {
+                    if (log_enabled(DEBUG)) {
                         char buf[64], buf2[64];
                         inet_ntop(
                             route->af, route->nexthop, buf2, sizeof(buf2)
@@ -752,7 +752,7 @@ bgpdump_process_bgp_attributes(
             }
 
             // TODO: remove copypaste
-            if (show && detail) {
+            if (log_enabled(DEBUG)) {
                 char buf[64], buf2[64];
                 inet_ntop(route->af, route->nexthop, buf2, sizeof(buf2));
                 inet_ntop(nlri_af, nlri_prefix, buf, sizeof(buf));
@@ -1186,10 +1186,10 @@ bgpdump_process_table_v2_rib_entry(
     }
 
     if (peer_spec_size)
-        LOG(DEBUG, "peer_index: %d, peer_match: %d\n", peer_index, peer_match);
+        LOG(TRACE, "peer_index: %d, peer_match: %d\n", peer_index, peer_match);
 
     if (!peer_spec_size || peer_match) {
-        LOG(DEBUG,
+        LOG(TRACE,
             "rib[%d]: peer[%d] originated_time: %u attribute_length: %d\n",
             index,
             peer_index,
@@ -1212,8 +1212,8 @@ bgpdump_process_table_v2_rib_entry(
         route.label = label;
         route.af = af;
 
-        if ((brief || show || lookup || udiff || stats || compat_mode ||
-             autsiz || heatmap) &&
+        if ((brief || lookup || udiff || stats || compat_mode || autsiz ||
+             heatmap) &&
             (!blaster || !blaster_dump)) {
             bgpdump_process_bgp_attributes(&route, p, p + attribute_length);
         }
@@ -1296,12 +1296,12 @@ bgpdump_process_table_v2_rib_entry(
             }
         }
 
-        if (brief && !quiet)
+        if (brief)
             route_print_brief(&route);
-        else if (show && !quiet)
-            route_print(&route);
-        else if (compat_mode && !quiet)
+        else if (compat_mode)
             route_print_compat(&route);
+        else if (log_enabled(TRACE))
+            route_print(&route);
     }
 
     BUFFER_OVERRUN_CHECK(p, attribute_length, data_end)
@@ -1339,10 +1339,10 @@ bgpdump_process_table_v2_rib_unicast(
     entry_count = ntohs(*(uint16_t *)p);
     p += size;
 
-    if (show && debug) {
+    if (log_enabled(TRACE)) {
         char pbuf[64];
         inet_ntop(af, prefix, pbuf, sizeof(pbuf));
-        LOG(DEBUG,
+        LOG(TRACE,
             "Sequence Number: %lu Prefix %s/%d Entry Count: %d\n",
             (unsigned long)sequence_number,
             pbuf,
@@ -1562,16 +1562,15 @@ bgpdump_process_table_v2_rib_generic(
     entry_count = ntohs(*(uint16_t *)p);
     p += size;
 
-    if (show && debug) {
+    if (log_enabled(INFO)) {
         char pbuf[64];
         inet_ntop(af, prefix, pbuf, sizeof(pbuf));
-        printf(
+        LOG(INFO,
             "Sequence Number: %u Prefix %s/%d Entry Count: %d\n",
             sequence_number,
             pbuf,
             prefix_length,
-            entry_count
-        );
+            entry_count);
     }
 
     for (int i = 0; i < entry_count && p < data_end; i++) {
