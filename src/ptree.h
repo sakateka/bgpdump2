@@ -46,6 +46,9 @@ struct ptree {
 #ifndef MIN
 #define MIN(x, y) ((x) > (y) ? (y) : (x))
 #endif /*MIN*/
+#ifndef MAX
+#define MAX(a, b) (a > b ? a : b)
+#endif /*MAX*/
 
 void
 ptree_node_print(struct ptree_node *x);

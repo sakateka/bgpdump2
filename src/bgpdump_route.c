@@ -18,6 +18,7 @@
 
 #include <arpa/inet.h>
 #include <assert.h>
+#include <errno.h>
 #include <netinet/in.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -27,7 +28,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-#include "bgpdump.h"
+#include "bgpdump_log.h"
 #include "bgpdump_option.h"
 #include "bgpdump_peer.h"
 #include "bgpdump_route.h"
@@ -67,8 +68,18 @@ route_table_create() {
 void
 route_print_brief(struct bgp_route *route) {
     char buf[64], buf2[64];
-    inet_ntop(qaf, route->prefix, buf, sizeof(buf));
-    inet_ntop(qaf, route->nexthop, buf2, sizeof(buf2));
+    if (inet_ntop(route->af, route->prefix, buf, sizeof(buf)) == NULL) {
+        LOG(WARN,
+            "failed to convert route prefix to af=%d: %s\n",
+            route->af,
+            strerror(errno));
+    }
+    if (inet_ntop(route->af, route->nexthop, buf2, sizeof(buf2)) == NULL) {
+        LOG(WARN,
+            "failed to convert nexthop to af=%d: %s\n",
+            route->af,
+            strerror(errno));
+    }
     printf("%s/%d %s\n", buf, route->prefix_length, buf2);
 }
 
@@ -76,8 +87,18 @@ void
 route_print(struct bgp_route *route) {
     int i;
     char buf[64], buf2[64];
-    inet_ntop(qaf, route->prefix, buf, sizeof(buf));
-    inet_ntop(qaf, route->nexthop, buf2, sizeof(buf2));
+    if (inet_ntop(route->af, route->prefix, buf, sizeof(buf)) == NULL) {
+        LOG(WARN,
+            "failed to convert route prefix to af=%d: %s\n",
+            route->af,
+            strerror(errno));
+    }
+    if (inet_ntop(route->af, route->nexthop, buf2, sizeof(buf2)) == NULL) {
+        LOG(WARN,
+            "failed to convert nexthop to af=%d: %s\n",
+            route->af,
+            strerror(errno));
+    }
     printf("%s/%d %s", buf, route->prefix_length, buf2);
     if (route->label) {
         printf(" label %u", route->label);
@@ -94,7 +115,6 @@ route_print_compat(struct bgp_route *route) {
     int i;
     char prefix[64];
     char nexthop[64];
-    int plen;
     char peer_addr[64];
     unsigned long peer_asn;
 
@@ -106,9 +126,20 @@ route_print_compat(struct bgp_route *route) {
     unsigned long med;
     unsigned long community;
 
-    inet_ntop(qaf, route->prefix, prefix, sizeof(prefix));
-    plen = route->prefix_length;
-    inet_ntop(qaf, route->nexthop, nexthop, sizeof(nexthop));
+    if (inet_ntop(route->af, route->prefix, prefix, sizeof(prefix)) == NULL) {
+        LOG(WARN,
+            "failed to convert route prefix to af=%d: %s\n",
+            route->af,
+            strerror(errno));
+    }
+    int plen = route->prefix_length;
+    int af = plen == 4 ? AF_INET : AF_INET6;
+    if (inet_ntop(af, route->nexthop, nexthop, sizeof(nexthop)) == NULL) {
+        LOG(WARN,
+            "failed to convert nexthop to af=%d: %s\n",
+            af,
+            strerror(errno));
+    }
     inet_ntop(
         AF_INET, &peer_table[peer_index].ipv4_addr, peer_addr, sizeof(peer_addr)
     );

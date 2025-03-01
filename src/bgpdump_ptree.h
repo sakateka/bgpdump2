@@ -20,8 +20,8 @@
 #include "ptree.h"
 
 void
-ptree_list(struct ptree *ptree);
+ptree_list(int af, struct ptree *ptree);
 void
 ptree_query(
-    struct ptree *ptree, struct query *query_table, uint64_t query_size
+    int af, struct ptree *ptree, struct query *query_table, uint64_t query_size
 );

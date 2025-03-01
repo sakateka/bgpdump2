@@ -26,6 +26,7 @@
 #include <zlib.h>
 
 #include "bgpdump_file.h"
+#include "bgpdump_log.h"
 #include "bgpdump_option.h"
 
 struct access_method methods[] = {
@@ -64,15 +65,13 @@ fread_wrap(void *ptr, size_t size, size_t nitems, void *file) {
     FILE *f = (FILE *)file;
     ret = fread(ptr, size, nitems, f);
     if (ferror(file)) {
-        fprintf(stderr, "fread error.\n");
+        LOG(ERROR, "fread error.\n");
         return 0;
     }
     if (feof(file) && !ret)
         return 0;
 
-    if (debug) {
-        printf("fread: ret: %ld\n", ret);
-    }
+    LOG(DEBUG, "fread: ret: %ld\n", ret);
     return ret;
 }
 
@@ -138,7 +137,7 @@ gopen(const char *filename, const char *mode) {
     gzFile f;
     f = gzopen(filename, mode);
     if (!f) {
-        fprintf(stderr, "gzopen() failed: %s\n", strerror(errno));
+        LOG(ERROR, "gzopen() failed: %s\n", strerror(errno));
         return NULL;
     }
     return f;
@@ -150,7 +149,7 @@ gread(void *ptr, size_t size, size_t nitems, void *file) {
     int ret = 0;
     ret = gzread(f, ptr, size * nitems);
     if (ret < 0) {
-        fprintf(stderr, "gzread failed.\n");
+        LOG(ERROR, "gzread failed.\n");
         return ret;
     }
     return ret;

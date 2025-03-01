@@ -72,15 +72,13 @@ bgpdump_process(char *buf, size_t *data_len) {
     unsigned long len;
     int rest;
 
-    if (debug)
-        printf("process %lu bytes.\n", *data_len);
+    LOG(DEBUG, "process %lu bytes.\n", *data_len);
 
     p = buf;
     h = (struct mrt_header *)p;
     len = ntohl(h->length);
 
-    if (debug)
-        printf("mrt message: length: %lu bytes.\n", len);
+    LOG(DEBUG, "mrt message: length: %lu bytes.\n", len);
 
     /* Process as long as entire MRT message is in the buffer */
     while (len && p + hsize + len <= data_end) {
@@ -91,8 +89,8 @@ bgpdump_process(char *buf, size_t *data_len) {
             bgpdump_process_table_dump_v2(h, &info, p + hsize + len);
             break;
         default:
-            printf("Not supported: mrt type: %d\n", mrt_type);
-            printf("discarding %lu bytes data.\n", hsize + len);
+            LOG(WARN, "Not supported: mrt type: %d\n", mrt_type);
+            LOG(WARN, "discarding %lu bytes data.\n", hsize + len);
             break;
         }
 
@@ -102,17 +100,14 @@ bgpdump_process(char *buf, size_t *data_len) {
         if (p + hsize < data_end) {
             h = (struct mrt_header *)p;
             len = ntohl(h->length);
-            if (debug) {
-                printf("next mrt message: length: %lu bytes.\n", len);
-                printf(
-                    "p: %p hsize: %d len: %lu mrt-end: %p data_end: %p\n",
-                    p,
-                    hsize,
-                    len,
-                    p + hsize + len,
-                    data_end
-                );
-            }
+            LOG(DEBUG, "next mrt message: length: %lu bytes.\n", len);
+            LOG(DEBUG,
+                "p: %p hsize: %d len: %lu mrt-end: %p data_end: %p\n",
+                p,
+                hsize,
+                len,
+                p + hsize + len,
+                data_end);
         }
     }
 
@@ -171,14 +166,13 @@ heatmap_image_hilbert_gplot(int peer_spec_i) {
     int textxmargin = 1;
     int textymargin = 5;
 
-    FILE *fp;
     char filename[256];
     snprintf(
         filename, sizeof(filename), "%s-p%d.gp", heatmap_prefix, peer_index
     );
-    fp = fopen(filename, "w+");
+    FILE *fp = fopen(filename, "w+");
     if (!fp) {
-        fprintf(stderr, "can't open file %s: %s\n", filename, strerror(errno));
+        LOG(ERROR, "can't open file %s: %s\n", filename, strerror(errno));
         return;
     }
 
@@ -213,12 +207,6 @@ heatmap_image_hilbert_gplot(int peer_spec_i) {
         // printf ("%u: start (%u,%u) end (%u,%u).\n",
         //         a0, x1, y1, x2, y2);
 
-#ifndef MIN
-#define MIN(a, b) (a < b ? a : b)
-#endif
-#ifndef MAX
-#define MAX(a, b) (a > b ? a : b)
-#endif
         xs = (MIN(x1, x2)) / 16 * 16;
         ys = (MIN(y1, y2)) / 16 * 16;
         xe = xs + 16;
@@ -285,7 +273,7 @@ heatmap_image_hilbert_gplot(int peer_spec_i) {
 
     fclose(fp);
 
-    printf("%s is written.\n", filename);
+    LOG(INFO, "%s is written.\n", filename);
 }
 
 void
@@ -340,15 +328,14 @@ heatmap_image_hilbert_data(int peer_spec_i) {
 
     // printf ("\n");
 
-    FILE *fp;
     char filename[256];
     snprintf(
         filename, sizeof(filename), "%s-p%d.dat", heatmap_prefix, peer_index
     );
 
-    fp = fopen(filename, "w+");
+    FILE *fp = fopen(filename, "w+");
     if (!fp) {
-        fprintf(stderr, "can't open file %s: %s\n", filename, strerror(errno));
+        LOG(ERROR, "can't open file %s: %s\n", filename, strerror(errno));
         return;
     }
 
@@ -357,7 +344,7 @@ heatmap_image_hilbert_data(int peer_spec_i) {
             fprintf(fp, "%u %u %u\n", a0, a1, array[a0][a1]);
 
     fclose(fp);
-    printf("%s is written.\n", filename);
+    LOG(INFO, "%s is written.\n", filename);
 }
 
 void
@@ -431,15 +418,14 @@ heatmap_image_hilbert_data_aspath_max_distance(int peer_spec_i) {
 
     // printf ("\n");
 
-    FILE *fp;
     char filename[256];
     snprintf(
         filename, sizeof(filename), "%s-p%d.dat", heatmap_prefix, peer_index
     );
 
-    fp = fopen(filename, "w+");
+    FILE *fp = fopen(filename, "w+");
     if (!fp) {
-        fprintf(stderr, "can't open file %s: %s\n", filename, strerror(errno));
+        LOG(ERROR, "can't open file %s: %s\n", filename, strerror(errno));
         return;
     }
 
@@ -448,13 +434,11 @@ heatmap_image_hilbert_data_aspath_max_distance(int peer_spec_i) {
             fprintf(fp, "%u %u %u\n", a0, a1, array[a0][a1]);
 
     fclose(fp);
-    printf("%s is written.\n", filename);
+    LOG(INFO, "%s is written.\n", filename);
 }
 
 int
 main(int argc, char **argv) {
-    char *filename = NULL;
-
     progname = strdup(argv[0]);
 
     bufsiz = resolv_number(BGPDUMP_BUFSIZ_DEFAULT, NULL);
@@ -468,32 +452,32 @@ main(int argc, char **argv) {
     argv += optind;
 
     if (argc == 0) {
-        printf("# Read MRT data from stdin\n");
+        LOG(INFO, "Read MRT data from stdin\n");
         argc += 1;
         argv -= 1;
         argv[0] = "-";
     }
 
-    if (verbose) {
-        printf("bufsiz = %llu\n", bufsiz);
-        printf("nroutes = %llu\n", nroutes);
-        printf("peer_indices = ");
+    if (log_enabled(INFO)) {
+        LOG(INFO, "bufsiz = %llu\n", bufsiz);
+        LOG(INFO, "nroutes = %llu\n", nroutes);
+        LOG(INFO, "peer_indices = ");
         for (int i = 0; i < peer_spec_size; i++) {
             if (i > 0) {
-                putchar(',');
+                fprintf(stderr, ",");
             }
-            printf("%d", peer_spec_index[i]);
+            fprintf(stderr, "%d", peer_spec_index[i]);
         }
-        puts("");
+        fprintf(stderr, "\n");
 
-        printf("asn nums = ");
+        LOG(INFO, "asn nums = ");
         for (int i = 0; i < autsiz; i++) {
             if (i > 0) {
-                putchar(',');
+                fprintf(stderr, ",");
             }
-            printf("%ld", autnums[i]);
+            fprintf(stderr, "%ld", autnums[i]);
         }
-        puts("");
+        fprintf(stderr, "\n");
     }
 
     /* default cmd */
@@ -504,10 +488,10 @@ main(int argc, char **argv) {
     if (stats)
         peer_stat_init();
 
-    char *buf;
-    buf = malloc(bufsiz);
+    char *buf = malloc(bufsiz);
     if (!buf) {
-        printf("can't malloc %lluB-size buf: %s\n", bufsiz, strerror(errno));
+        LOG(ERROR, "can't malloc %lluB-size buf: %s\n", bufsiz, strerror(errno)
+        );
         exit(-1);
     }
 
@@ -542,53 +526,43 @@ main(int argc, char **argv) {
 
     /* for each rib files. */
     for (int i = 0; i < argc; i++) {
-        filename = argv[i];
-
-        file_format_t format;
-        struct access_method *method;
-        void *file;
-        size_t ret;
-
-        format = get_file_format(filename);
-        method = get_access_method(format);
-        file = method->fopen(filename, "r");
+        char *filename = argv[i];
+        file_format_t format = get_file_format(filename);
+        struct access_method *method = get_access_method(format);
+        void *file = method->fopen(filename, "r");
         if (!file) {
-            fprintf(stderr, "# could not open file: %s\n", filename);
+            LOG(ERROR, "# could not open file: %s\n", filename);
             continue;
         }
 
         size_t datalen = 0;
 
         while (1) {
-            ret = method->fread(buf + datalen, 1, bufsiz - datalen, file);
-            if (debug)
-                printf(
-                    "read: %lu bytes to buf[%lu]. total %lu bytes\n",
-                    ret,
-                    datalen,
-                    ret + datalen
-                );
+            size_t ret =
+                method->fread(buf + datalen, 1, bufsiz - datalen, file);
+            LOG(DEBUG,
+                "read: %lu bytes to buf[%lu]. total %lu bytes\n",
+                ret,
+                datalen,
+                ret + datalen);
             datalen += ret;
 
             /* end of file. */
             if (ret == 0 && method->feof(file)) {
-                if (debug)
-                    printf("read: end-of-file.\n");
+                LOG(DEBUG, "read: end-of-file.\n");
                 break;
             }
 
             bgpdump_process(buf, &datalen);
 
-            if (debug)
-                printf("process rest: %lu bytes\n", datalen);
+            LOG(DEBUG, "process rest: %lu bytes\n", datalen);
         }
 
         if (datalen) {
-            printf(
+            LOG(WARN,
                 "warning: %lu bytes unprocessed data remains: %s\n",
                 datalen,
-                filename
-            );
+                filename);
         }
         method->fclose(file);
 
@@ -622,7 +596,7 @@ main(int argc, char **argv) {
         if (lookup_file)
             query_file(lookup_file);
 
-        if (debug)
+        if (log_enabled(DEBUG))
             query_list();
     }
 
@@ -635,8 +609,8 @@ main(int argc, char **argv) {
             for (int i = 0; i < peer_spec_size; i++) {
                 printf("peer %d:\n", peer_spec_index[i]);
                 if (verbose)
-                    ptree_list(peer_ptree[i]);
-                ptree_query(peer_ptree[i], query_table, query_size);
+                    ptree_list(qaf, peer_ptree[i]);
+                ptree_query(qaf, peer_ptree[i], query_table, query_size);
             }
         }
 

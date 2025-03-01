@@ -34,7 +34,7 @@
 #include "bgpdump_route.h"
 
 void
-ptree_list(struct ptree *ptree) {
+ptree_list(int af, struct ptree *ptree) {
     uint64_t count = 0;
     struct ptree_node *x;
     struct bgp_route *br;
@@ -44,8 +44,8 @@ ptree_list(struct ptree *ptree) {
     for (x = ptree_head(ptree); x; x = ptree_next(x)) {
         if (x->data) {
             br = x->data;
-            inet_ntop(qaf, br->prefix, buf, sizeof(buf));
-            inet_ntop(qaf, br->nexthop, buf2, sizeof(buf2));
+            inet_ntop(af, br->prefix, buf, sizeof(buf));
+            inet_ntop(af, br->nexthop, buf2, sizeof(buf2));
             printf("%s/%d: %s\n", buf, br->prefix_length, buf2);
             count++;
         }
@@ -57,14 +57,14 @@ ptree_list(struct ptree *ptree) {
 
 void
 ptree_query(
-    struct ptree *ptree, struct query *query_table, uint64_t query_size
+    int af, struct ptree *ptree, struct query *query_table, uint64_t query_size
 ) {
     struct ptree_node *x;
 
     for (uint64_t i = 0; i < query_size; i++) {
         char *query = query_table[i].destination;
         char *answer = query_table[i].nexthop;
-        int plen = (qaf == AF_INET ? 32 : 128);
+        int plen = (af == AF_INET ? 32 : 128);
         x = ptree_search(query, plen, ptree);
         if (x) {
             struct bgp_route *route = x->data;
@@ -73,7 +73,7 @@ ptree_query(
                 route_print(route);
         } else if (!benchmark) {
             char buf[64];
-            inet_ntop(qaf, query, buf, sizeof(buf));
+            inet_ntop(af, query, buf, sizeof(buf));
             printf("%s: no route found.\n", buf);
         }
     }

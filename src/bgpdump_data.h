@@ -23,6 +23,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define AFI_IPv4 1
+#define AFI_IPv6 2
+
 #define BGPDUMP_TYPE_DEPRECATED_MRT_NULL 0
 #define BGPDUMP_TYPE_DEPRECATED_MRT_START 1
 #define BGPDUMP_TYPE_DEPRECATED_MRT_DIE 2
