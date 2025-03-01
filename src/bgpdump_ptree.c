@@ -34,7 +34,7 @@
 #include "bgpdump_route.h"
 
 void
-ptree_list(int af, struct ptree *ptree) {
+ptree_list(struct ptree *ptree) {
     uint64_t count = 0;
     struct ptree_node *x;
     struct bgp_route *br;
@@ -44,8 +44,8 @@ ptree_list(int af, struct ptree *ptree) {
     for (x = ptree_head(ptree); x; x = ptree_next(x)) {
         if (x->data) {
             br = x->data;
-            inet_ntop(af, br->prefix, buf, sizeof(buf));
-            inet_ntop(af, br->nexthop, buf2, sizeof(buf2));
+            inet_ntop(br->af, br->prefix, buf, sizeof(buf));
+            inet_ntop(br->nexthop_af, br->nexthop, buf2, sizeof(buf2));
             printf("%s/%d: %s\n", buf, br->prefix_length, buf2);
             count++;
         }
@@ -62,8 +62,8 @@ ptree_query(
     struct ptree_node *x;
 
     for (uint64_t i = 0; i < query_size; i++) {
-        char *query = query_table[i].destination;
-        char *answer = query_table[i].nexthop;
+        uint8_t *query = query_table[i].destination;
+        uint8_t *answer = query_table[i].nexthop;
         int plen = (af == AF_INET ? 32 : 128);
         x = ptree_search(query, plen, ptree);
         if (x) {

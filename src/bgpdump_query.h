@@ -20,9 +20,9 @@
 #include "bgpdump.h"
 
 struct query {
-    char destination[MAX_ADDR_LENGTH];
+    uint8_t destination[MAX_ADDR_LENGTH];
     int plen;
-    char nexthop[MAX_ADDR_LENGTH];
+    uint8_t nexthop[MAX_ADDR_LENGTH];
 };
 
 extern struct query *query_table;

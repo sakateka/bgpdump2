@@ -44,11 +44,12 @@ struct __attribute__((__packed__)) bgp_large_comm {
 };
 
 struct __attribute__((__packed__)) bgp_route {
-    char flag;
-    char prefix[MAX_ADDR_LENGTH];
+    uint8_t flag;
+    uint8_t prefix[MAX_ADDR_LENGTH];
     uint8_t af;
+    uint8_t nexthop_af;
     uint8_t prefix_length;
-    char nexthop[MAX_ADDR_LENGTH];
+    uint8_t nexthop[MAX_ADDR_LENGTH];
     uint8_t path_size;
     uint32_t origin_as;
     uint32_t path_list[ROUTE_PATH_LIMIT];

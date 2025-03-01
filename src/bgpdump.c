@@ -64,17 +64,16 @@ struct bgp_route *diff_table[2];
 struct ptree *diff_ptree[2];
 
 void
-bgpdump_process(char *buf, size_t *data_len) {
-    char *p;
+bgpdump_process(uint8_t *buf, size_t *data_len) {
     struct mrt_header *h;
     int hsize = sizeof(struct mrt_header);
-    char *data_end = buf + *data_len;
+    uint8_t *data_end = buf + *data_len;
     unsigned long len;
     int rest;
 
     LOG(DEBUG, "process %lu bytes.\n", *data_len);
 
-    p = buf;
+    uint8_t *p = buf;
     h = (struct mrt_header *)p;
     len = ntohl(h->length);
 
@@ -120,7 +119,7 @@ bgpdump_process(char *buf, size_t *data_len) {
 }
 
 void
-rot(u_int64_t n, u_int32_t *x, u_int32_t *y, u_int32_t rx, u_int32_t ry) {
+rot(uint64_t n, uint32_t *x, uint32_t *y, uint32_t rx, uint32_t ry) {
     int t;
     if (ry == 0) {
         if (rx == 1) {
@@ -135,9 +134,9 @@ rot(u_int64_t n, u_int32_t *x, u_int32_t *y, u_int32_t rx, u_int32_t ry) {
 }
 
 void
-d2xy(u_int64_t n, u_int64_t d, u_int32_t *x, u_int32_t *y) {
-    u_int64_t s, t = d;
-    u_int32_t rx, ry;
+d2xy(uint64_t n, uint64_t d, uint32_t *x, uint32_t *y) {
+    uint64_t s, t = d;
+    uint32_t rx, ry;
     *x = *y = 0;
     for (s = 1; s < n; s *= 2) {
         rx = 1 & (t / 2);
@@ -158,8 +157,8 @@ heatmap_image_hilbert_gplot(int peer_spec_i) {
     unsigned int a0;
     unsigned long val = 0;
 
-    u_int32_t x1, y1, x2, y2;
-    u_int32_t xs, ys, xe, ye;
+    uint32_t x1, y1, x2, y2;
+    uint32_t xs, ys, xe, ye;
 
     unsigned int index;
 
@@ -281,16 +280,16 @@ heatmap_image_hilbert_data(int peer_spec_i) {
     int peer_index = peer_spec_index[peer_spec_i];
     struct ptree *ptree = peer_ptree[peer_spec_i];
 
-    unsigned int a0, a1, a2;
+    uint32_t a0, a1, a2;
     struct in_addr addr = {0};
-    unsigned long val = 0;
-    unsigned char *p = (unsigned char *)&addr;
+    uint64_t val = 0;
+    uint8_t *p = (uint8_t *)&addr;
     struct ptree_node *node;
-    unsigned long count = 0;
+    uint64_t count = 0;
 
-    unsigned int array[256][256];
+    uint32_t array[256][256];
 
-    u_int32_t x, y;
+    uint32_t x, y;
     x = y = 0;
 
     for (a0 = 0; a0 < 256; a0++) {
@@ -303,7 +302,7 @@ heatmap_image_hilbert_data(int peer_spec_i) {
                 p[2] = (unsigned char)a2;
                 // printf ("heat: addr: %s\n", inet_ntoa (addr));
 
-                node = ptree_search((char *)&addr, 24, ptree);
+                node = ptree_search((uint8_t *)&addr, 24, ptree);
                 if (node) {
                     // struct bgp_route *route = node->data;
                     // route_print (route);
@@ -362,7 +361,7 @@ heatmap_image_hilbert_data_aspath_max_distance(int peer_spec_i) {
 
     unsigned int array[256][256];
 
-    u_int32_t x, y;
+    uint32_t x, y;
     x = y = 0;
 
     for (a0 = 0; a0 < 256; a0++) {
@@ -377,7 +376,7 @@ heatmap_image_hilbert_data_aspath_max_distance(int peer_spec_i) {
                 p[2] = (unsigned char)a2;
                 // printf ("heat: addr: %s\n", inet_ntoa (addr));
 
-                node = ptree_search((char *)&addr, 24, ptree);
+                node = ptree_search((uint8_t *)&addr, 24, ptree);
                 if (node) {
                     struct bgp_route *route = node->data;
                     // route_print (route);
@@ -488,7 +487,7 @@ main(int argc, char **argv) {
     if (stats)
         peer_stat_init();
 
-    char *buf = malloc(bufsiz);
+    uint8_t *buf = malloc(bufsiz);
     if (!buf) {
         LOG(ERROR, "can't malloc %lluB-size buf: %s\n", bufsiz, strerror(errno)
         );
@@ -609,7 +608,7 @@ main(int argc, char **argv) {
             for (int i = 0; i < peer_spec_size; i++) {
                 printf("peer %d:\n", peer_spec_index[i]);
                 if (verbose)
-                    ptree_list(qaf, peer_ptree[i]);
+                    ptree_list(peer_ptree[i]);
                 ptree_query(qaf, peer_ptree[i], query_table, query_size);
             }
         }

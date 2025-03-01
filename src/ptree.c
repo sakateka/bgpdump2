@@ -32,7 +32,7 @@
 char mask[] = {0x00, 0x80, 0xc0, 0xe0, 0xf0, 0xf8, 0xfc, 0xfe, 0xff};
 
 static struct ptree_node *
-ptree_node_create(char *key, int keylen) {
+ptree_node_create(uint8_t *key, int keylen) {
     struct ptree_node *x;
     int len;
 
@@ -42,7 +42,7 @@ ptree_node_create(char *key, int keylen) {
     if (!x)
         return NULL;
 
-    x->key = (char *)((caddr_t)x + sizeof(struct ptree_node));
+    x->key = ((uint8_t *)x + sizeof(struct ptree_node));
     x->keylen = keylen;
     x->parent = NULL;
     x->child[0] = NULL;
@@ -81,7 +81,7 @@ ptree_node_print(struct ptree_node *x) {
    key[keylen] would return the bit just after the key,
    because the index of the key[] starts with 0-origin. */
 static int
-check_bit(char *key, int keylen) {
+check_bit(uint8_t *key, int keylen) {
     int offset;
     int shift;
 
@@ -94,7 +94,7 @@ check_bit(char *key, int keylen) {
 /* ptree_match() returns 1 iff keyi and keyj are the same
    in keylen bits */
 static int
-ptree_match(char *keyi, char *keyj, int keylen) {
+ptree_match(uint8_t *keyi, uint8_t *keyj, int keylen) {
     int bytes;
     int bits;
     bytes = keylen / 8;
@@ -108,7 +108,7 @@ ptree_match(char *keyi, char *keyj, int keylen) {
 /* ptree_lookup() returns the node with the key if any.
    returned node may be a branching node (that doesn't have data). */
 struct ptree_node *
-ptree_lookup(char *key, int keylen, struct ptree *t) {
+ptree_lookup(uint8_t *key, int keylen, struct ptree *t) {
     struct ptree_node *x;
 
     x = t->top;
@@ -125,7 +125,7 @@ ptree_lookup(char *key, int keylen, struct ptree *t) {
    that matches the key. If data is NULL, it is a branching node,
    and ptree_search() ignores it. */
 struct ptree_node *
-ptree_search(char *key, int keylen, struct ptree *t) {
+ptree_search(uint8_t *key, int keylen, struct ptree *t) {
     struct ptree_node *x, *match;
 
     match = NULL;
@@ -140,7 +140,7 @@ ptree_search(char *key, int keylen, struct ptree *t) {
 }
 
 struct ptree_node *
-ptree_search_exact(char *key, int keylen, struct ptree *t) {
+ptree_search_exact(uint8_t *key, int keylen, struct ptree *t) {
     struct ptree_node *x, *match;
 
     match = NULL;
@@ -170,7 +170,7 @@ ptree_link(struct ptree_node *v, struct ptree_node *w) {
 /* key_common_len() returns the bit length in which the keyi and
    the keyj are equal */
 static int
-key_common_len(char *keyi, int keyilen, char *keyj, int keyjlen) {
+key_common_len(uint8_t *keyi, int keyilen, uint8_t *keyj, int keyjlen) {
     int nmatch = 0;
     int minkeylen = MIN(keyilen, keyjlen);
     int keylen = 0;
@@ -196,7 +196,7 @@ key_common_len(char *keyi, int keyilen, char *keyj, int keyjlen) {
 /* ptree_common() creates and returns the branching node
    between keyi and keyj */
 static struct ptree_node *
-ptree_common(char *keyi, int keyilen, char *keyj, int keyjlen) {
+ptree_common(uint8_t *keyi, int keyilen, uint8_t *keyj, int keyjlen) {
     int keylen;
     struct ptree_node *x;
 
@@ -206,7 +206,7 @@ ptree_common(char *keyi, int keyilen, char *keyj, int keyjlen) {
 }
 
 static struct ptree_node *
-ptree_get(char *key, int keylen, struct ptree *t) {
+ptree_get(uint8_t *key, int keylen, struct ptree *t) {
     struct ptree_node *x;
     struct ptree_node *u, *v, *w; /* u->v->w or u->x->{v, w}*/
 
@@ -276,7 +276,7 @@ ptree_get(char *key, int keylen, struct ptree *t) {
 }
 
 struct ptree_node *
-ptree_add(char *key, int keylen, void *data, struct ptree *t) {
+ptree_add(uint8_t *key, int keylen, void *data, struct ptree *t) {
     struct ptree_node *x;
 
     x = ptree_get(key, keylen, t);

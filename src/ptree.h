@@ -19,8 +19,9 @@
 #ifndef _PTREE_H_
 #define _PTREE_H_
 
+#include <stdint.h>
 struct ptree_node {
-    char *key;
+    uint8_t *key;
     struct ptree_node *parent;
     struct ptree_node *child[2];
     void *data;
@@ -54,12 +55,12 @@ void
 ptree_node_print(struct ptree_node *x);
 
 struct ptree_node *
-ptree_search(char *key, int keylen, struct ptree *t);
+ptree_search(uint8_t *key, int keylen, struct ptree *t);
 struct ptree_node *
-ptree_search_exact(char *key, int keylen, struct ptree *t);
+ptree_search_exact(uint8_t *key, int keylen, struct ptree *t);
 
 struct ptree_node *
-ptree_add(char *key, int keylen, void *data, struct ptree *t);
+ptree_add(uint8_t *key, int keylen, void *data, struct ptree *t);
 void
 ptree_remove(struct ptree_node *v);
 

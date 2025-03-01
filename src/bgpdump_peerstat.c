@@ -110,39 +110,39 @@ peer_stat_save(int peer_index, struct bgp_route *route, uint8_t prefix_length) {
 
     t = peer_stat[peer_index].origin_as_count;
     netval = htonl(route->origin_as);
-    n = ptree_search_exact((char *)&netval, 32, t);
+    n = ptree_search_exact((uint8_t *)&netval, 32, t);
     if (n) {
         count = (uint64_t)n->data;
         count++;
         n->data = (void *)count;
     } else {
         count = 1;
-        ptree_add((char *)&netval, 32, (void *)count, t);
+        ptree_add((uint8_t *)&netval, 32, (void *)count, t);
     }
 
     t = peer_stat[peer_index].as_path_count;
     path_size = MIN(route->path_size, ROUTE_PATH_LIMIT);
     for (uint32_t i = 0; i < path_size; i++)
         path_list[i] = htonl(route->path_list[i]);
-    n = ptree_search_exact((char *)path_list, 32 * path_size, t);
+    n = ptree_search_exact((uint8_t *)path_list, 32 * path_size, t);
     if (n) {
         count = (uint64_t)n->data;
         count++;
         n->data = (void *)count;
     } else {
         count = 1;
-        ptree_add((char *)path_list, 32 * path_size, (void *)count, t);
+        ptree_add((uint8_t *)path_list, 32 * path_size, (void *)count, t);
     }
 
     t = peer_stat[peer_index].as_path_len_count;
-    n = ptree_search_exact((char *)&route->path_size, 8, t);
+    n = ptree_search_exact((uint8_t *)&route->path_size, 8, t);
     if (n) {
         count = (uint64_t)n->data;
         count++;
         n->data = (void *)count;
     } else {
         count = 1;
-        ptree_add((char *)&route->path_size, 8, (void *)count, t);
+        ptree_add(&route->path_size, 8, (void *)count, t);
     }
 }
 

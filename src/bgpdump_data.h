@@ -86,14 +86,14 @@ struct bgpdump_pa_map_ {
 };
 
 void
-bgpdump_process_bgp_attributes(struct bgp_route *, char *, char *);
+bgpdump_process_bgp_attributes(struct bgp_route *, uint8_t *, uint8_t *);
 
 void
 bgpdump_process_mrt_header(struct mrt_header *h, struct mrt_info *info);
 
 void
 bgpdump_process_table_dump_v2(
-    struct mrt_header *h, struct mrt_info *info, char *data_end
+    struct mrt_header *h, struct mrt_info *info, uint8_t *data_end
 );
 char *
 bgpdump_print_extd_comm(struct bgp_extd_comm *comm);

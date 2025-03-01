@@ -63,7 +63,7 @@ bgpdump_udiff_compare(uint32_t sequence_number) {
         } else {
             struct ptree_node *x;
             int plen = (qaf == AF_INET ? 32 : 128);
-            x = ptree_search((char *)&route->prefix, plen, pt1);
+            x = ptree_search(route->prefix, plen, pt1);
             if (x) {
                 /* only in left but also entirely reachable in right */
                 struct bgp_route *other = x->data;
@@ -94,7 +94,7 @@ bgpdump_udiff_compare(uint32_t sequence_number) {
         } else {
             struct ptree_node *x;
             int plen = (qaf == AF_INET ? 32 : 128);
-            x = ptree_search((char *)&route->prefix, plen, pt0);
+            x = ptree_search(route->prefix, plen, pt0);
             if (x) {
                 /* only in right but also entirely reachable in left */
                 struct bgp_route *other = x->data;
@@ -125,7 +125,7 @@ bgpdump_udiff_compare(uint32_t sequence_number) {
             struct ptree_node *x;
 
             route = &rt0[sequence_number];
-            x = ptree_search((char *)&route->prefix, plen, pt1);
+            x = ptree_search(route->prefix, plen, pt1);
             if (x) {
                 /* the shorter in right was '>' */
                 struct bgp_route *other = x->data;
@@ -137,7 +137,7 @@ bgpdump_udiff_compare(uint32_t sequence_number) {
             }
 
             route = &rt1[sequence_number];
-            x = ptree_search((char *)&route->prefix, plen, pt0);
+            x = ptree_search(route->prefix, plen, pt0);
             if (x) {
                 /* the shorter in left was '<' */
                 struct bgp_route *other = x->data;

@@ -31,9 +31,11 @@ enum log_id {
         if (log_enabled(log_level)) {                                          \
             fprintf(                                                           \
                 stderr,                                                        \
-                "%s [%-6s]: " fmt_,                                            \
+                "%s [%-6s][%s:%d]: " fmt_,                                     \
                 fmt_timestamp(),                                               \
                 log_name(log_level),                                           \
+                __FILE_NAME__,                                                 \
+                __LINE__,                                                      \
                 ##__VA_ARGS__                                                  \
             );                                                                 \
         }                                                                      \
