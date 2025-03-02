@@ -30,6 +30,7 @@
 #include "ptree.h"
 
 #include "bgpdump_data.h"
+#include "bgpdump_log.h"
 #include "bgpdump_peer.h"
 
 struct peer peer_null;
@@ -65,12 +66,18 @@ peer_table_init() {
 }
 
 void
-peer_print(struct peer *peer) {
+peer_print(int index, struct peer *peer) {
     char buf[64], buf2[64], buf3[64];
     inet_ntop(AF_INET, &peer->bgp_id, buf, sizeof(buf));
     inet_ntop(AF_INET, &peer->ipv4_addr, buf2, sizeof(buf2));
     inet_ntop(AF_INET6, &peer->ipv6_addr, buf3, sizeof(buf3));
-    printf("%s asn:%u [%s|%s]", buf, peer->asnumber, buf2, buf3);
+    LOG(DEBUG,
+        "# peer_table[%d] changed: %s asn:%u [%s|%s]\n",
+        index,
+        buf,
+        peer->asnumber,
+        buf2,
+        buf3);
 }
 
 void

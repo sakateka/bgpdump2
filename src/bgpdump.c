@@ -81,7 +81,7 @@ bgpdump_process(uint8_t *buf, size_t *data_len) {
 
     /* Process as long as entire MRT message is in the buffer */
     while (len && p + hsize + len <= data_end) {
-        bgpdump_process_mrt_header(h, &info);
+        uint16_t mrt_type = bgpdump_process_mrt_header(h, &info);
 
         switch (mrt_type) {
         case BGPDUMP_TYPE_TABLE_DUMP_V2:

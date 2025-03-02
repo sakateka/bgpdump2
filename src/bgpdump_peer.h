@@ -52,7 +52,7 @@ extern struct ptree *peer_ptree[];
 void
 peer_table_init();
 void
-peer_print(struct peer *peer);
+peer_print(int index, struct peer *peer);
 void
 peer_route_count_show();
 void

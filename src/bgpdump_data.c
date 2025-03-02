@@ -42,34 +42,89 @@
 extern struct bgp_route *diff_table[];
 extern struct ptree *diff_ptree[];
 
+uint32_t timestamp;
+uint16_t peer_index;
+
 #define BUFFER_OVERRUN_CHECK(P, SIZE, END)                                     \
-    _BUFFER_OVERRUN_CHECK(P, SIZE, END, __FILE_NAME__, __LINE__)
-#define _BUFFER_OVERRUN_CHECK(P, SIZE, END, file, line)                        \
+    _BUFFER_OVERRUN_CHECK(P, SIZE, END, __FILE_NAME__, __LINE__, __FUNCTION__)
+#define _BUFFER_OVERRUN_CHECK(P, SIZE, END, file, line, desc)                  \
     if ((P) + (SIZE) > (END)) {                                                \
-        printf(                                                                \
-            "[%s:%d]buffer overrun %ld.\n", file, line, (END) - ((P) + (SIZE)) \
-        );                                                                     \
+        LOG(ERROR,                                                             \
+            "[%s:%d] %s buffer %p size=%ld overrun=%ld.\n",                    \
+            file,                                                              \
+            line,                                                              \
+            desc,                                                              \
+            (P),                                                               \
+            (size_t)(SIZE),                                                    \
+            (END) - ((P) + (SIZE)));                                           \
         exit(-1);                                                              \
     }
 
-uint32_t timestamp;
-uint16_t mrt_type;
-uint16_t mrt_subtype;
-uint32_t mrt_length;
+#define read_u8(r, e) _read_u8(r, e, __FILE_NAME__, __LINE__)
+static inline uint8_t
+_read_u8(uint8_t **r, uint8_t *end, const char *file, int line) {
+    _BUFFER_OVERRUN_CHECK(*r, 1, end, file, line, "read_u8");
+    uint8_t out = (uint8_t)**r;
+    *r += 1;
+    return out;
+}
 
-uint32_t sequence_number;
-uint16_t peer_index;
-char prefix[16];
-uint8_t prefix_length;
-uint32_t label;
+#define read_u16(r, e) _read_u16(r, e, __FILE_NAME__, __LINE__)
+static inline uint16_t
+_read_u16(uint8_t **r, uint8_t *end, const char *file, int line) {
+    _BUFFER_OVERRUN_CHECK(*r, 2, end, file, line, "read_u16");
+    uint16_t out = ntohs(*(uint16_t *)*r);
+    *r += 2;
+    return out;
+}
+
+#define read_u24(r, e) _read_u24(r, e, __FILE_NAME__, __LINE__)
+static inline uint32_t
+_read_u24(uint8_t **r, uint8_t *end, const char *file, int line) {
+    _BUFFER_OVERRUN_CHECK(*r, 3, end, file, line, "read_u24");
+    uint32_t out =
+        *(uint8_t *)*r << 16 | *(uint8_t *)(*r + 1) << 8 | *(uint8_t *)(*r + 2);
+    r += 3;
+    return out;
+}
+#define read_u32(r, e) _read_u32(r, e, __FILE_NAME__, __LINE__)
+static inline uint32_t
+_read_u32(uint8_t **r, uint8_t *end, const char *file, int line) {
+    _BUFFER_OVERRUN_CHECK(*r, 4, end, file, line, "read_u32");
+    uint32_t out = ntohs(*(uint32_t *)*r);
+    *r += 4;
+    return out;
+}
+
+#define read_n(b, bs, r, l, e) _read_n(b, bs, r, l, e, __FILE_NAME__, __LINE__)
+void
+_read_n(
+    uint8_t *buf,
+    int buf_size,
+    uint8_t **r,
+    int len,
+    uint8_t *end,
+    const char *file,
+    int line
+) {
+    _BUFFER_OVERRUN_CHECK(
+        buf, buf_size, buf + buf_size, file, line, "read_n[dst buf]"
+    );
+    _BUFFER_OVERRUN_CHECK(*r, len, end, file, line, "read_n[src data]");
+    if (buf_size > len) {
+        memset(buf, 0, buf_size);
+    }
+    memcpy(buf, *r, len);
+    *r += len;
+}
 
 int
 bgpdump_resolve_afi(int afi) {
     switch (afi) {
-    case AFI_IPv4:
+    case BGP_AFI_IPV4:
         return AF_INET;
         break;
-    case AFI_IPv6:
+    case BGP_AFI_IPV6:
         return AF_INET6;
         break;
     default:
@@ -77,13 +132,11 @@ bgpdump_resolve_afi(int afi) {
     }
 }
 
-void
+uint16_t
 bgpdump_process_mrt_header(struct mrt_header *h, struct mrt_info *info) {
-    unsigned long newtime;
+    uint32_t newtime = ntohl(h->timestamp);
 
-    newtime = ntohl(h->timestamp);
-
-    if (log_enabled(DEBUG) && timestamp != newtime) {
+    if (log_enabled(INFO) && timestamp != newtime) {
         struct tm *tm;
         char timebuf[64];
         time_t clock;
@@ -91,17 +144,16 @@ bgpdump_process_mrt_header(struct mrt_header *h, struct mrt_info *info) {
         clock = (time_t)newtime;
         tm = localtime(&clock);
         strftime(timebuf, sizeof(timebuf), "%Y/%m/%d %H:%M:%S", tm);
-        printf(
+        LOG(INFO,
             "new timestamp: %lu (\"%s\")\n",
             (unsigned long)ntohl(h->timestamp),
-            timebuf
-        );
+            timebuf);
     }
 
     timestamp = newtime;
-    mrt_type = ntohs(h->type);
-    mrt_subtype = ntohs(h->subtype);
-    mrt_length = ntohl(h->length);
+    uint16_t mrt_type = ntohs(h->type);
+    uint16_t mrt_subtype = ntohs(h->subtype);
+    uint32_t mrt_length = ntohl(h->length);
 
     info->timestamp = newtime;
     info->type = ntohs(h->type);
@@ -114,78 +166,40 @@ bgpdump_process_mrt_header(struct mrt_header *h, struct mrt_info *info) {
         mrt_type,
         mrt_subtype,
         mrt_length);
+
+    return mrt_type;
 }
 
-void
-bgpdump_table_v2_peer_entry(
-    int index, uint8_t *p, uint8_t *data_end, int *retsize
-) {
-    int size, total = 0;
-    uint8_t peer_type;
-    struct in_addr peer_bgp_id;
-    struct in_addr ipv4_addr;
-    struct in6_addr ipv6_addr;
-    uint16_t peer_as_2byte = 0;
-    uint32_t peer_as_4byte = 0;
+int
+bgpdump_table_v2_peer_entry(int index, uint8_t *p, uint8_t *data_end) {
+    int total = 0;
 
-    char buf[64], buf2[64];
+    uint8_t peer_type = read_u8(&p, data_end);
+    total += 1;
 
-    memset(&ipv4_addr, 0, sizeof(ipv4_addr));
-    memset(&ipv6_addr, 0, sizeof(ipv6_addr));
-
-    size = sizeof(peer_type);
-    BUFFER_OVERRUN_CHECK(p, size, data_end)
-    peer_type = *(uint8_t *)p;
-    p += size;
-    total += size;
-
-#define FLAG_PEER_ADDRESS_IPV6 0x01
-#define FLAG_AS_NUMBER_SIZE 0x02
     int af = peer_type & FLAG_PEER_ADDRESS_IPV6 ? AF_INET6 : AF_INET;
     int asn4byte = peer_type & FLAG_AS_NUMBER_SIZE ? 1 : 0;
 
-    size = sizeof(peer_bgp_id);
-    BUFFER_OVERRUN_CHECK(p, size, data_end)
-    memcpy(&peer_bgp_id, p, sizeof(peer_bgp_id));
-    p += size;
-    total += size;
+    struct in_addr peer_bgp_id;
+    int len = sizeof(struct in_addr);
+    read_n((uint8_t *)&peer_bgp_id, len, &p, len, data_end);
+    total += len;
 
-    if (af == AF_INET6) {
-        size = sizeof(ipv6_addr);
-        BUFFER_OVERRUN_CHECK(p, size, data_end)
-        memcpy(&ipv6_addr, p, size);
-        p += size;
-        total += size;
-    } else {
-        size = sizeof(ipv4_addr);
-        BUFFER_OVERRUN_CHECK(p, size, data_end)
-        memcpy(&ipv4_addr, p, size);
-        p += size;
-        total += size;
-    }
+    struct in6_addr addr;
+    len = af == AF_INET6 ? 16 : 4;
+    read_n((uint8_t *)&addr, len, &p, len, data_end);
+    total += len;
 
-    if (asn4byte) {
-        size = sizeof(peer_as_4byte);
-        BUFFER_OVERRUN_CHECK(p, size, data_end)
-        peer_as_4byte = ntohl(*(uint32_t *)p);
-        p += size;
-        total += size;
-    } else {
-        size = sizeof(peer_as_2byte);
-        BUFFER_OVERRUN_CHECK(p, size, data_end)
-        peer_as_2byte = ntohs(*(uint16_t *)p);
-        p += size;
-        total += size;
-    }
+    len = asn4byte ? 4 : 2;
+    uint32_t asnumber =
+        asn4byte ? read_u32(&p, data_end) : (uint32_t)read_u16(&p, data_end);
+    total += len;
 
-    inet_ntop(AF_INET, &peer_bgp_id, buf, sizeof(buf));
-    if (af == AF_INET) {
-        inet_ntop(af, &ipv4_addr, buf2, sizeof(buf2));
-    } else {
-        inet_ntop(af, &ipv6_addr, buf2, sizeof(buf2));
-    }
-    if (log_enabled(DEBUG)) {
-        printf(
+    if (log_enabled(INFO)) {
+        char buf[64], buf2[64];
+        inet_ntop(AF_INET, &peer_bgp_id, buf, sizeof(buf));
+        inet_ntop(af, &addr, buf2, sizeof(buf2));
+        LOG(INFO,
             "Peer[%d]: Type: %s%s%s(%#02x) "
             "BGP ID: %-15s AS: %-5u Address: %-15s\n",
             index,
@@ -197,35 +211,31 @@ bgpdump_table_v2_peer_entry(
             (peer_type & FLAG_AS_NUMBER_SIZE ? "4byte-as" : ""),
             peer_type,
             buf,
-            (int)(asn4byte ? peer_as_4byte : peer_as_2byte),
-            buf2
-        );
+            asnumber,
+            buf2);
     }
 
     if (index < PEER_MAX) {
         struct peer new;
         memset(&new, 0, sizeof(new));
         new.bgp_id = peer_bgp_id;
-        new.ipv6_addr = ipv6_addr;
-        new.ipv4_addr = ipv4_addr;
-        new.asnumber = (asn4byte ? peer_as_4byte : peer_as_2byte);
+        new.ipv6_addr = (struct in6_addr)addr;
+        new.ipv4_addr = *((struct in_addr *)&addr);
+        new.asnumber = asnumber;
         new.ipv4_root = ptree_create();
         new.ipv6_root = ptree_create();
         new.path_root = ptree_create();
 
-        if (log_enabled(DEBUG) || peer_table_only ||
-            (memcmp(&peer_table[index], &peer_null, sizeof(struct peer)) &&
-             memcmp(&peer_table[index], &new, sizeof(struct peer)))) {
-            printf("# peer_table[%d] changed: ", index);
-            peer_print(&new);
-            printf("\n");
-            fflush(stdout);
+        if (log_enabled(DEBUG) && peer_table_only &&
+            memcmp(&peer_table[index], &peer_null, sizeof(struct peer)) &&
+            memcmp(&peer_table[index], &new, sizeof(struct peer))) {
+            peer_print(index, &new);
         }
 
         peer_table[index] = new;
         peer_size = index + 1;
     } else
-        printf("peer_table overflow.\n");
+        LOG(ERROR, "peer_table overflow.\n");
 
     if (autsiz) {
         int i, local_peer_spec_size = peer_spec_size;
@@ -247,7 +257,7 @@ bgpdump_table_v2_peer_entry(
         }
     }
 
-    *retsize = total;
+    return total;
 }
 
 void
@@ -256,50 +266,34 @@ bgpdump_process_table_v2_peer_index_table(
 ) {
     (void)info;
 
-    int size;
-    int i;
-    struct in_addr collector_bgp_id;
-    uint16_t view_name_length;
-    uint16_t peer_count;
-    char buf[64];
-
     uint8_t *p = (uint8_t *)h + sizeof(struct mrt_header);
 
     /* Collector BGP ID */
-    size = sizeof(collector_bgp_id);
-    BUFFER_OVERRUN_CHECK(p, size, data_end)
-    collector_bgp_id.s_addr = *(uint32_t *)p;
-    p += size;
+    struct in_addr collector_bgp_id;
+    collector_bgp_id.s_addr = read_u32(&p, data_end);
 
     /* View Name Length */
-    size = sizeof(view_name_length);
-    BUFFER_OVERRUN_CHECK(p, size, data_end)
-    view_name_length = ntohs(*(uint16_t *)p);
-    p += size;
+    uint16_t view_name_length = read_u16(&p, data_end);
 
     /* View Name */
-    size = view_name_length;
-    BUFFER_OVERRUN_CHECK(p, size, data_end)
+    BUFFER_OVERRUN_CHECK(p, view_name_length, data_end)
     uint8_t *view_name = p;
-    p += size;
+    p += view_name_length;
 
     /* Peer Count */
-    size = sizeof(peer_count);
-    BUFFER_OVERRUN_CHECK(p, size, data_end)
-    peer_count = ntohs(*(uint16_t *)p);
-    p += size;
+    uint16_t peer_count = read_u16(&p, data_end);
 
     if (peer_table_only || log_enabled(DEBUG)) {
+        char buf[64];
         inet_ntop(AF_INET, &collector_bgp_id, buf, sizeof(buf));
-        LOG(DEBUG, "Collector BGP ID: %s\n", buf);
-        LOG(DEBUG, "View Name Length: %d\n", (int)view_name_length);
-        LOG(DEBUG, "View Name: %s\n", view_name);
-        LOG(DEBUG, "Peer Count: %d\n", (int)peer_count);
+        LOG(INFO, "Collector BGP ID: %s\n", buf);
+        LOG(INFO, "View Name Length: %d\n", (int)view_name_length);
+        LOG(INFO, "View Name: %s\n", view_name);
+        LOG(INFO, "Peer Count: %d\n", (int)peer_count);
     }
 
-    for (i = 0; i < peer_count; i++) {
-        bgpdump_table_v2_peer_entry(i, p, data_end, &size);
-        p += size;
+    for (int i = 0; i < peer_count; i++) {
+        p += bgpdump_table_v2_peer_entry(i, p, data_end);
     }
 }
 
@@ -380,24 +374,6 @@ bgpdump_print_extd_comm(struct bgp_extd_comm *comm) {
     return buf;
 }
 
-#define OPTIONAL 0b10000000
-#define TRANSITIVE 0b01000000
-#define PARTIAL 0b00100000
-#define EXTENDED 0b00010000
-
-#define ORIGIN 1
-#define AS_PATH 2
-#define NEXT_HOP 3
-#define MULTI_EXIT_DISC 4
-#define LOCAL_PREF 5
-#define ATOMIC_AGGREGATE 6
-#define AGGREGATOR 7
-#define COMMUNITY 8
-#define MP_REACH_NLRI 14
-#define MP_UNREACH_NLRI 15
-#define EXTENDED_COMMUNITY 16
-#define LARGE_COMMUNITY 32
-
 const char *
 bgpdump_attr_name(uint8_t attr_type) {
     static char unknown_buf[16];
@@ -446,47 +422,6 @@ bgpdump_print_attrs(uint8_t atype, uint8_t aflags, uint16_t alen) {
         (aflags & EXTENDED ? ", extended-length" : "")
     );
     printf("  attr: %s <%s> (%#04x) len: %d\n", name, flags, atype, alen);
-}
-
-#define read_u8(r, e) _read_u8(r, e, __FILE_NAME__, __LINE__)
-static inline uint8_t
-_read_u8(uint8_t **r, uint8_t *end, const char *file, int line) {
-    _BUFFER_OVERRUN_CHECK(*r, 1, end, file, line);
-    uint8_t out = (uint8_t)**r;
-    *r += 1;
-    return out;
-}
-
-#define read_u16(r, e) _read_u16(r, e, __FILE_NAME__, __LINE__)
-static inline uint16_t
-_read_u16(uint8_t **r, uint8_t *end, const char *file, int line) {
-    _BUFFER_OVERRUN_CHECK(*r, 2, end, file, line);
-    uint16_t out = ntohs(*(uint16_t *)*r);
-    *r += 2;
-    return out;
-}
-#define read_u32(r, e) _read_u32(r, e, __FILE_NAME__, __LINE__)
-static inline uint32_t
-_read_u32(uint8_t **r, uint8_t *end, const char *file, int line) {
-    _BUFFER_OVERRUN_CHECK(*r, 4, end, file, line);
-    uint32_t out = ntohs(*(uint32_t *)*r);
-    *r += 4;
-    return out;
-}
-
-#define read_n(b, l, r, e) _read_n(b, l, r, e, __FILE_NAME__, __LINE__)
-void
-_read_n(
-    uint8_t *buf,
-    uint8_t len,
-    uint8_t **r,
-    uint8_t *end,
-    const char *file,
-    int line
-) {
-    _BUFFER_OVERRUN_CHECK(*r, len, end, file, line);
-    memcpy(buf, *r, len);
-    *r += len;
 }
 
 void
@@ -559,7 +494,7 @@ bgpdump_process_bgp_attributes(
 
         case NEXT_HOP: {
             memset(route->nexthop, 0, sizeof(route->nexthop));
-            read_n(route->nexthop, attr_len, &r, end);
+            read_n(route->nexthop, 16, &r, attr_len, end);
             route->nexthop_af = attr_len == 4 ? AF_INET : AF_INET6;
             if (log_enabled(DEBUG)) {
                 char buf[64];
@@ -624,6 +559,7 @@ bgpdump_process_bgp_attributes(
                     (uint8_t *)&route->extd_community[idx],
                     sizeof(struct bgp_extd_comm),
                     &r,
+                    sizeof(struct bgp_extd_comm),
                     end
                 );
 
@@ -666,12 +602,12 @@ bgpdump_process_bgp_attributes(
                 printf("\n");
         } break;
 
-        case MP_REACH_NLRI | MP_UNREACH_NLRI: {
+        case MP_REACH_NLRI:
+        case MP_UNREACH_NLRI: {
             // https://datatracker.ietf.org/doc/html/rfc4760#section-3
             int af = route->af;
-            uint16_t afi = af == AF_INET ? AFI_IPv4 : AFI_IPv6;
-            uint8_t safi = af == AF_INET ? BGPDUMP_TABLE_V2_RIB_IPV4_UNICAST
-                                         : BGPDUMP_TABLE_V2_RIB_IPV6_UNICAST;
+            uint16_t afi = af == AF_INET ? BGP_AFI_IPV4 : BGP_AFI_IPV6;
+            uint8_t safi = BGP_SAFI_UNICAST;
 
             uint8_t first_byte_zero = *r == '\0';
             uint8_t is_reachable = attr_type == MP_REACH_NLRI;
@@ -681,6 +617,7 @@ bgpdump_process_bgp_attributes(
                 af = bgpdump_resolve_afi(afi);
                 if (af == -1) {
                     LOG(WARN, "failed to convert afi=%d to AF\n", afi);
+                    return;
                 }
                 safi = read_u8(&r, end);
             }
@@ -691,7 +628,11 @@ bgpdump_process_bgp_attributes(
 
                 memset(route->nexthop, 0, sizeof(route->nexthop));
                 read_n(
-                    route->nexthop, MAX(len, sizeof(route->nexthop)), &r, end
+                    route->nexthop,
+                    sizeof(route->nexthop),
+                    &r,
+                    MIN(len, sizeof(route->nexthop)),
+                    end
                 );
                 route->nexthop_af = len == 4 ? AF_INET : AF_INET6;
 
@@ -699,7 +640,7 @@ bgpdump_process_bgp_attributes(
                     uint8_t nexthop2[16];
                     char bufn1[64], bufn2[64];
                     memset(nexthop2, 0, sizeof(nexthop2));
-                    read_n(nexthop2, 16, &r, end);
+                    read_n(nexthop2, 16, &r, 16, end);
                     inet_ntop(
                         route->nexthop_af, route->nexthop, bufn1, sizeof(bufn1)
                     );
@@ -725,7 +666,7 @@ bgpdump_process_bgp_attributes(
                         continue;
                     }
                     nlri_af = byte_len == 4 ? AF_INET : AF_INET6;
-                    read_n(nlri_prefix, byte_len, &r, end);
+                    read_n(nlri_prefix, sizeof(nlri_prefix), &r, byte_len, end);
                     // TODO: remove copypaste
                     if (log_enabled(DEBUG)) {
                         char buf[64], buf2[64];
@@ -1153,28 +1094,22 @@ bgpdump_add_prefix(
 
 void
 bgpdump_process_table_v2_rib_entry(
-    int index, int af, uint8_t **q, struct mrt_info *info, uint8_t *data_end
+    int index,
+    int af,
+    uint32_t sequence_number,
+    uint32_t label,
+    uint8_t *prefix,
+    uint8_t prefix_length,
+
+    uint8_t **q,
+    uint8_t *data_end
 ) {
-    (void)info;
 
     uint8_t *p = *q;
 
-    int size = sizeof(peer_index);
-    BUFFER_OVERRUN_CHECK(p, size, data_end)
-    peer_index = ntohs(*(uint16_t *)p);
-    p += size;
-
-    uint32_t originated_time;
-    size = sizeof(originated_time);
-    BUFFER_OVERRUN_CHECK(p, size, data_end)
-    originated_time = ntohl(*(uint32_t *)p);
-    p += size;
-
-    uint16_t attribute_length;
-    size = sizeof(attribute_length);
-    BUFFER_OVERRUN_CHECK(p, size, data_end)
-    attribute_length = ntohs(*(uint16_t *)p);
-    p += size;
+    peer_index = read_u16(&p, data_end);
+    uint32_t originated_time = read_u32(&p, data_end);
+    uint16_t attribute_length = read_u16(&p, data_end);
 
     int peer_spec_i = 0;
     int peer_match = 0;
@@ -1263,8 +1198,7 @@ bgpdump_process_table_v2_rib_entry(
                 *route_size = nroutes - 1;
             }
 
-            struct bgp_route *rpp;
-            rpp = peer_route_table[peer_spec_i];
+            struct bgp_route *rpp = peer_route_table[peer_spec_i];
             rp = &rpp[sequence_number];
             // rp = &peer_route_table[peer_index][sequence_number];
             *route_size = *route_size + 1;
@@ -1314,44 +1248,32 @@ void
 bgpdump_process_table_v2_rib_unicast(
     int af, struct mrt_header *h, struct mrt_info *info, uint8_t *data_end
 ) {
+    (void)info;
     uint8_t *p = (uint8_t *)h + sizeof(struct mrt_header);
 
-    int size = sizeof(sequence_number);
-    BUFFER_OVERRUN_CHECK(p, size, data_end)
-    sequence_number = ntohl(*(uint32_t *)p);
-    p += size;
-
-    size = sizeof(prefix_length);
-    BUFFER_OVERRUN_CHECK(p, size, data_end)
-    prefix_length = *(uint8_t *)p;
-    p += size;
+    uint32_t sequence_number = read_u32(&p, data_end);
+    uint8_t prefix_length = read_u8(&p, data_end);
 
     uint32_t prefix_size = ((prefix_length + 7) / 8);
-    size = prefix_size;
-    BUFFER_OVERRUN_CHECK(p, size, data_end)
-    memset(prefix, 0, sizeof(prefix));
-    memcpy(prefix, p, prefix_size);
-    p += size;
-
-    uint16_t entry_count;
-    size = sizeof(entry_count);
-    BUFFER_OVERRUN_CHECK(p, size, data_end)
-    entry_count = ntohs(*(uint16_t *)p);
-    p += size;
+    uint8_t prefix[16];
+    read_n(prefix, sizeof(prefix), &p, prefix_size, data_end);
+    uint16_t entry_count = read_u16(&p, data_end);
 
     if (log_enabled(TRACE)) {
         char pbuf[64];
         inet_ntop(af, prefix, pbuf, sizeof(pbuf));
         LOG(TRACE,
-            "Sequence Number: %lu Prefix %s/%d Entry Count: %d\n",
-            (unsigned long)sequence_number,
+            "Sequence Number: %u Prefix %s/%d Entry Count: %d\n",
+            sequence_number,
             pbuf,
             prefix_length,
             entry_count);
     }
 
     for (int i = 0; i < entry_count && p < data_end; i++) {
-        bgpdump_process_table_v2_rib_entry(i, af, &p, info, data_end);
+        bgpdump_process_table_v2_rib_entry(
+            i, af, sequence_number, 0, prefix, prefix_length, &p, data_end
+        );
     }
 
     if (udiff) {
@@ -1508,22 +1430,13 @@ void
 bgpdump_process_table_v2_rib_generic(
     struct mrt_header *h, struct mrt_info *info, uint8_t *data_end
 ) {
-    uint16_t entry_count;
-    uint16_t afi;
-    uint8_t safi;
+    (void)info;
 
     uint8_t *p = (uint8_t *)h + sizeof(struct mrt_header);
 
-    int size = sizeof(sequence_number);
-    BUFFER_OVERRUN_CHECK(p, size, data_end);
-    sequence_number = ntohl(*(uint32_t *)p);
-    p += size;
-
-    size = sizeof(afi) + sizeof(safi);
-    BUFFER_OVERRUN_CHECK(p, size, data_end);
-    afi = ntohs(*(uint16_t *)p);
-    safi = *(uint8_t *)(p + 2);
-    p += size;
+    uint32_t sequence_number = read_u32(&p, data_end);
+    uint16_t afi = read_u16(&p, data_end);
+    uint8_t safi = read_u8(&p, data_end);
 
     int af = bgpdump_resolve_afi(afi);
     if (af == -1) {
@@ -1531,36 +1444,20 @@ bgpdump_process_table_v2_rib_generic(
         return;
     }
 
-    size = sizeof(prefix_length);
-    BUFFER_OVERRUN_CHECK(p, size, data_end);
-    if (safi == 4) {
-        prefix_length = *(uint8_t *)p - 24;
-    } else {
-        prefix_length = *(uint8_t *)p;
-    }
-    p += size;
-
-    label = 0;
-    if (safi == 4) {
-        size = 3; /* 3 byte per label */
-        BUFFER_OVERRUN_CHECK(p, size, data_end);
-        label = *(uint8_t *)p << 16 | *(uint8_t *)(p + 1) << 8 |
-                *(uint8_t *)(p + 2);
+    uint8_t prefix_length = read_u8(&p, data_end);
+    uint32_t label = 0;
+    if (safi == BGP_SAFI_MPLS) {
+        // https://datatracker.ietf.org/doc/html/rfc3107
+        prefix_length -= 24;
+        label = read_u24(&p, data_end);
         label = label >> 4;
-        p += size;
     }
 
     uint32_t prefix_size = ((prefix_length + 7) / 8);
-    size = prefix_size;
-    BUFFER_OVERRUN_CHECK(p, size, data_end);
-    memset(prefix, 0, sizeof(prefix));
-    memcpy(prefix, p, prefix_size);
-    p += size;
+    uint8_t prefix[16];
+    read_n(prefix, sizeof(prefix), &p, prefix_size, data_end);
 
-    size = sizeof(entry_count);
-    BUFFER_OVERRUN_CHECK(p, size, data_end);
-    entry_count = ntohs(*(uint16_t *)p);
-    p += size;
+    uint16_t entry_count = read_u16(&p, data_end);
 
     if (log_enabled(INFO)) {
         char pbuf[64];
@@ -1574,7 +1471,9 @@ bgpdump_process_table_v2_rib_generic(
     }
 
     for (int i = 0; i < entry_count && p < data_end; i++) {
-        bgpdump_process_table_v2_rib_entry(af, i, &p, info, data_end);
+        bgpdump_process_table_v2_rib_entry(
+            i, af, sequence_number, label, prefix, prefix_length, &p, data_end
+        );
     }
 }
 

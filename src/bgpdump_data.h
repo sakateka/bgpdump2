@@ -23,8 +23,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define AFI_IPv4 1
-#define AFI_IPv6 2
+#define BGP_AFI_IPV4 1
+#define BGP_AFI_IPV6 2
+
+#define BGP_SAFI_UNICAST 1
+#define BGP_SAFI_MULTICAST 2
+#define BGP_SAFI_MPLS 4
+#define BGP_SAFI_MPLS_VPN 128
+#define BGP_SAFI_VPN_MULTICAST 129
+#define BGP_SAFI_FLOW 133
 
 #define BGPDUMP_TYPE_DEPRECATED_MRT_NULL 0
 #define BGPDUMP_TYPE_DEPRECATED_MRT_START 1
@@ -54,6 +61,33 @@
 #define BGPDUMP_TABLE_V2_RIB_IPV6_UNICAST 4
 #define BGPDUMP_TABLE_V2_RIB_IPV6_MULTICAST 5
 #define BGPDUMP_TABLE_V2_RIB_GENERIC 6
+#define BGPDUMP_TABLE_V2_RIB_GEO_PEER_TABLE 7
+#define BGPDUMP_TABLE_V2_RIB_IPV4_UNICAST_ADDPATH 8
+#define BGPDUMP_TABLE_V2_RIB_IPV4_MULTICAST_ADDPATH 9
+#define BGPDUMP_TABLE_V2_RIB_IPV6_UNICAST_ADDPATH 10
+#define BGPDUMP_TABLE_V2_RIB_IPV6_MULTICAST_ADDPATH 11
+#define BGPDUMP_TABLE_V2_RIB_GENERIC_ADDPATH 12
+
+#define FLAG_PEER_ADDRESS_IPV6 0x01
+#define FLAG_AS_NUMBER_SIZE 0x02
+
+#define OPTIONAL 0b10000000
+#define TRANSITIVE 0b01000000
+#define PARTIAL 0b00100000
+#define EXTENDED 0b00010000
+
+#define ORIGIN 1
+#define AS_PATH 2
+#define NEXT_HOP 3
+#define MULTI_EXIT_DISC 4
+#define LOCAL_PREF 5
+#define ATOMIC_AGGREGATE 6
+#define AGGREGATOR 7
+#define COMMUNITY 8
+#define MP_REACH_NLRI 14
+#define MP_UNREACH_NLRI 15
+#define EXTENDED_COMMUNITY 16
+#define LARGE_COMMUNITY 32
 
 struct mrt_header {
     uint32_t timestamp;
@@ -70,9 +104,6 @@ struct mrt_info {
 };
 
 extern uint32_t timestamp;
-extern uint16_t mrt_type;
-extern uint16_t mrt_subtype;
-extern uint32_t mrt_length;
 
 /*
  * Data structure used for parsing BGP path attributes.
@@ -88,7 +119,7 @@ struct bgpdump_pa_map_ {
 void
 bgpdump_process_bgp_attributes(struct bgp_route *, uint8_t *, uint8_t *);
 
-void
+uint16_t
 bgpdump_process_mrt_header(struct mrt_header *h, struct mrt_info *info);
 
 void
