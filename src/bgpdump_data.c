@@ -493,13 +493,16 @@ bgpdump_process_bgp_attributes(
         } break;
 
         case NEXT_HOP: {
+            if (attr_len != 4) {
+                LOG(ERROR, "Bad nexthop len %d != 4", attr_len);
+            }
             memset(route->nexthop, 0, sizeof(route->nexthop));
             read_n(route->nexthop, 16, &r, attr_len, end);
-            route->nexthop_af = attr_len == 4 ? AF_INET : AF_INET6;
+            route->nexthop_af = AF_INET;
             if (log_enabled(DEBUG)) {
                 char buf[64];
-                inet_ntop(route->af, route->nexthop, buf, sizeof(buf));
-                printf("    nexthop: %s\n", buf);
+                inet_ntop(route->nexthop_af, route->nexthop, buf, sizeof(buf));
+                LOG(DEBUG, "    nexthop: %s\n", buf);
             }
         } break;
 
@@ -602,111 +605,99 @@ bgpdump_process_bgp_attributes(
                 printf("\n");
         } break;
 
-        case MP_REACH_NLRI:
-        case MP_UNREACH_NLRI: {
+        case MP_REACH_NLRI: {
             // https://datatracker.ietf.org/doc/html/rfc4760#section-3
-            int af = route->af;
-            uint16_t afi = af == AF_INET ? BGP_AFI_IPV4 : BGP_AFI_IPV6;
-            uint8_t safi = BGP_SAFI_UNICAST;
-
-            uint8_t first_byte_zero = *r == '\0';
-            uint8_t is_reachable = attr_type == MP_REACH_NLRI;
-
-            if (first_byte_zero) {
-                afi = read_u16(&r, end);
-                af = bgpdump_resolve_afi(afi);
-                if (af == -1) {
-                    LOG(WARN, "failed to convert afi=%d to AF\n", afi);
-                    return;
-                }
-                safi = read_u8(&r, end);
+            uint16_t afi = read_u16(&r, end);
+            int af = bgpdump_resolve_afi(afi);
+            if (af == -1) {
+                LOG(WARN, "failed to convert afi=%d to AF, ignore\n", afi);
+                break;
             }
+            uint8_t safi = read_u8(&r, end);
+            uint8_t len = read_u8(&r, end);
 
-            uint8_t len = 0;
-            if (is_reachable) {
-                uint8_t len = read_u8(&r, end);
+            memset(route->nexthop, 0, sizeof(route->nexthop));
+            read_n(
+                route->nexthop,
+                sizeof(route->nexthop),
+                &r,
+                MIN(len, sizeof(route->nexthop)),
+                end
+            );
+            route->nexthop_af = af;
 
-                memset(route->nexthop, 0, sizeof(route->nexthop));
-                read_n(
-                    route->nexthop,
-                    sizeof(route->nexthop),
-                    &r,
-                    MIN(len, sizeof(route->nexthop)),
-                    end
-                );
-                route->nexthop_af = len == 4 ? AF_INET : AF_INET6;
+            if (len == 2 * sizeof(struct in6_addr)) {
+                uint8_t nexthop2[16];
+                read_n(nexthop2, 16, &r, 16, end);
 
-                if (log_enabled(DEBUG) && len == 2 * sizeof(struct in6_addr)) {
-                    uint8_t nexthop2[16];
+                if (log_enabled(DEBUG)) {
                     char bufn1[64], bufn2[64];
-                    memset(nexthop2, 0, sizeof(nexthop2));
-                    read_n(nexthop2, 16, &r, 16, end);
-                    inet_ntop(
-                        route->nexthop_af, route->nexthop, bufn1, sizeof(bufn1)
-                    );
-                    inet_ntop(AF_INET6, nexthop2, bufn2, sizeof(bufn2));
+                    inet_ntop(af, route->nexthop, bufn1, sizeof(bufn1));
+                    inet_ntop(af, nexthop2, bufn2, sizeof(bufn2));
                     LOG(DEBUG, "link-local nexthop: %s:%s\n", bufn1, bufn2);
                 }
             }
-            if (r >= end) { /* reserved present ? */
+            if (r >= p + attr_len) { /* reserved present ? */
                 break;
             }
+            r++; /* reserved */
+
             uint8_t nlri_prefix[16];
-            uint8_t nlri_plen = 0;
-            uint8_t nlri_af = route->af;
-            if (first_byte_zero) {
-                if (is_reachable)
-                    r++; /* reserved */
-
-                while (r < p + attr_len) {
-                    nlri_plen = read_u8(&r, end);
-                    memset(nlri_prefix, 0, sizeof(nlri_prefix));
-                    uint8_t byte_len = (nlri_plen + 7) / 8;
-                    if (byte_len == 0) {
-                        continue;
-                    }
-                    nlri_af = byte_len == 4 ? AF_INET : AF_INET6;
-                    read_n(nlri_prefix, sizeof(nlri_prefix), &r, byte_len, end);
-                    // TODO: remove copypaste
-                    if (log_enabled(DEBUG)) {
-                        char buf[64], buf2[64];
-                        inet_ntop(
-                            route->af, route->nexthop, buf2, sizeof(buf2)
-                        );
-                        inet_ntop(nlri_af, nlri_prefix, buf, sizeof(buf));
-                        printf(
-                            "    mp_%s_nlri: (afi/safi: %d/%d) %s(size:%d) "
-                            "%s/%d\n",
-                            is_reachable ? "reach" : "unreach",
-                            afi,
-                            safi,
-                            buf2,
-                            len,
-                            buf,
-                            nlri_plen
-                        );
-                    }
+            while (r < p + attr_len) {
+                uint8_t nlri_plen = read_u8(&r, end);
+                uint8_t byte_len = (nlri_plen + 7) / 8;
+                if (byte_len == 0) {
+                    continue;
                 }
-
-            } else {
-                memcpy(nlri_prefix, route->prefix, route->prefix_length);
+                memset(nlri_prefix, 0, sizeof(nlri_prefix));
+                read_n(nlri_prefix, sizeof(nlri_prefix), &r, byte_len, end);
+                // TODO: remove copypaste
+                if (log_enabled(DEBUG)) {
+                    char buf[64], buf2[64];
+                    inet_ntop(af, route->nexthop, buf2, sizeof(buf2));
+                    inet_ntop(af, nlri_prefix, buf, sizeof(buf));
+                    LOG(DEBUG,
+                        "    MP_REACH_NLRI: (afi/safi: %d/%d) %s(size:%d) "
+                        "%s/%d\n",
+                        afi,
+                        safi,
+                        buf2,
+                        len,
+                        buf,
+                        nlri_plen);
+                }
             }
+        } break;
+        case MP_UNREACH_NLRI: {
+            // https://datatracker.ietf.org/doc/html/rfc4760#section-4
+            uint16_t afi = read_u16(&r, end);
+            int af = bgpdump_resolve_afi(afi);
+            if (af == -1) {
+                LOG(WARN, "failed to convert afi=%d to AF, ignore\n", afi);
+                break;
+            }
+            uint8_t safi = read_u8(&r, end);
 
-            // TODO: remove copypaste
-            if (log_enabled(DEBUG)) {
-                char buf[64], buf2[64];
-                inet_ntop(route->af, route->nexthop, buf2, sizeof(buf2));
-                inet_ntop(nlri_af, nlri_prefix, buf, sizeof(buf));
-                printf(
-                    "    mp_%s_nlri: (afi/safi: %d/%d) %s(size:%d) %s/%d\n",
-                    is_reachable ? "reach" : "unreach",
-                    afi,
-                    safi,
-                    buf2,
-                    len,
-                    buf,
-                    nlri_plen
-                );
+            uint8_t nlri_prefix[16];
+            while (r < p + attr_len) {
+                uint8_t nlri_plen = read_u8(&r, end);
+                uint8_t byte_len = (nlri_plen + 7) / 8;
+                if (byte_len == 0) {
+                    continue;
+                }
+                memset(nlri_prefix, 0, sizeof(nlri_prefix));
+                read_n(nlri_prefix, sizeof(nlri_prefix), &r, byte_len, end);
+                // TODO: remove copypaste
+                if (log_enabled(DEBUG)) {
+                    char buf[64];
+                    inet_ntop(af, nlri_prefix, buf, sizeof(buf));
+                    LOG(DEBUG,
+                        "    MP_UNREACH_NLRI: (afi/safi: %d/%d) %s/%d\n",
+                        afi,
+                        safi,
+                        buf,
+                        nlri_plen);
+                }
             }
         } break;
 
@@ -895,9 +886,7 @@ uint16_t
 bgpdump_filter_bgp_pa_copy_nh(
     struct bgpdump_pa_map_ *pa_map, uint8_t *filtered_path, uint8_t *nexthop
 ) {
-    uint8_t *fp;
-
-    fp = filtered_path;
+    uint8_t *fp = filtered_path;
 
     /* Copy the known PAs */
     bgpdump_copy_pa(pa_map, ORIGIN, &fp);
