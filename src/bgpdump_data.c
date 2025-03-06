@@ -494,7 +494,7 @@ bgpdump_process_bgp_attributes(
 
         case NEXT_HOP: {
             if (attr_len != 4) {
-                LOG(ERROR, "Bad nexthop len %d != 4", attr_len);
+                break;
             }
             memset(route->nexthop, 0, sizeof(route->nexthop));
             read_n(route->nexthop, 16, &r, attr_len, end);

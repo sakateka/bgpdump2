@@ -15,7 +15,6 @@ enum log_id {
     TIMER,
     TIMER_DETAIL,
     UPDATE,
-    UPDATE_DETAIL,
     KEEPALIVE,
     FSM,
     IO,
@@ -51,6 +50,9 @@ log_enabled(enum log_id lid);
 /// Enable logger by id.
 void
 log_enable_id(enum log_id lid);
+/// Disable logger by id.
+void
+log_disable_id(enum log_id lid);
 
 /// Enable logger by name.
 void
@@ -90,9 +92,8 @@ char *__log_color_reset = LOG_RESET;
 static struct logger loggers[LOG_ID_MAX] = {
     [TIMER] = {.name = "TIMER", .color = ""},
     [TIMER_DETAIL] = {.name = "TIMER2", .color = ""},
-    [UPDATE] = {.name = "UPD", .color = ""},
-    [UPDATE_DETAIL] = {.name = "UPD2", .color = ""},
-    [KEEPALIVE] = {.name = "KPALVE", .color = ""},
+    [UPDATE] = {.name = "UPDATE", .color = ""},
+    [KEEPALIVE] = {.name = "KEEPALIVE", .color = ""},
     [FSM] = {.name = "FSM", .color = LOG_GREEN},
     [IO] = {.name = "IO", .color = ""},
     [TRACE] = {.name = "TRACE", .color = LOG_CYAN},
@@ -141,6 +142,10 @@ log_enabled(enum log_id lid) {
 inline void
 log_enable_id(enum log_id lid) {
     loggers[lid].enable = 1;
+}
+inline void
+log_disable_id(enum log_id lid) {
+    loggers[lid].enable = 0;
 }
 
 void

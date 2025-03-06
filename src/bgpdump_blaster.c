@@ -609,12 +609,19 @@ bgpdump_ribwalk_cb(struct timer_ *timer) {
                     bgp_path,
                     bgp_path->path_length,
                     bgp_path->refcount);
+                int debug_enabled = log_enabled(DEBUG);
+                if (!debug_enabled) {
+                    log_enable_id(DEBUG);
+                }
 
                 bgpdump_process_bgp_attributes(
                     &route,
                     session->ribwalk_pnode->key,
                     session->ribwalk_pnode->key + bgp_path->path_length
                 );
+                if (!debug_enabled) {
+                    log_disable_id(DEBUG);
+                }
             }
         } else {
 
