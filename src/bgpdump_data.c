@@ -276,8 +276,8 @@ bgpdump_process_table_v2_peer_index_table(
     uint16_t view_name_length = read_u16(&p, data_end);
 
     /* View Name */
-    BUFFER_OVERRUN_CHECK(p, view_name_length, data_end)
     uint8_t *view_name = p;
+    BUFFER_OVERRUN_CHECK(p, view_name_length, data_end)
     p += view_name_length;
 
     /* Peer Count */
