@@ -91,7 +91,7 @@ _read_u24(uint8_t **r, uint8_t *end, const char *file, int line) {
 static inline uint32_t
 _read_u32(uint8_t **r, uint8_t *end, const char *file, int line) {
     _BUFFER_OVERRUN_CHECK(*r, 4, end, file, line, "read_u32");
-    uint32_t out = ntohs(*(uint32_t *)*r);
+    uint32_t out = ntohl(*(uint32_t *)*r);
     *r += 4;
     return out;
 }

@@ -933,8 +933,7 @@ read_be_uint(u_char *data, uint length) {
 
     value = 0;
     for (idx = 0; idx < length; idx++) {
-        value <<= 8;
-        value = value | *(data + idx);
+        value = (value << 8) | *(data + idx);
     }
 
     return value;
