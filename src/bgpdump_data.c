@@ -445,8 +445,8 @@ bgpdump_process_bgp_attributes(
             bgpdump_print_attrs(attr_type, attr_flags, attr_len);
         }
 
+        BUFFER_OVERRUN_CHECK(p, attr_len, end)
         uint8_t *r = p;
-        BUFFER_OVERRUN_CHECK(r, attr_len, end)
         switch (attr_type) {
         case ORIGIN:
             if (log_enabled(DEBUG))
