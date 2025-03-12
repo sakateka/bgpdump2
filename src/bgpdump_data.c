@@ -84,7 +84,7 @@ _read_u24(uint8_t **r, uint8_t *end, const char *file, int line) {
     _BUFFER_OVERRUN_CHECK(*r, 3, end, file, line, "read_u24");
     uint32_t out =
         *(uint8_t *)*r << 16 | *(uint8_t *)(*r + 1) << 8 | *(uint8_t *)(*r + 2);
-    r += 3;
+    *r += 3;
     return out;
 }
 #define read_u32(r, e) _read_u32(r, e, __FILE_NAME__, __LINE__)
