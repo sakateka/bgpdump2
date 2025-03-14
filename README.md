@@ -12,40 +12,31 @@ meson compile -C build
 
 build/src/bgpdump2 -h
 Usage: build/src/bgpdump2 [options] <file1> <file2> ...
--h, --help                     Display this help and exit.
--V, --version                  Print the program version.
--v, --verbose                  Print verbose information.
--d, --debug                    Display debug information.
--m, --compat-mode              Display in libbgpdump -m compatible mode.
--b, --brief                    List information (i.e., simple prefix-nexthops).
--B, --blaster <addr>[:port]    Blast RIB to a BGP speaker.
--D, --blaster-dump             Blast BGP stream to a file.
--T, --prefix-limit             Prefix limit for Blaster mode.
--S, --next-hop-self <addr>     Overwrite nexthop attribute.
--a, --autnum <asn>             Blaster Mode. Specify ASN. (default asn 65535)
-                               At most 8 ASNs can be specified.
--w, --withdraw-delay           Blaster Mode. Send withdraw after <N> seconds.
--P, --peer-table               Display the peer table and exit.
--p, --peer <index>[,<index>]   Specify peers by peer_index. (default all)
-                               At most 16 peers can be specified.
--u, --diff                     Shows unified diff. Specify two peers.
--U, --diff-verbose             Shows the detailed info of unified diff.
--r, --diff-table               Specify to create diff route_table.
--c, --count                    Count the route number.
--j, --plen-dist                Count the route number by prefixlen.
--k, --peer-stat                Shows prefix-length distribution.
--N, --bufsiz                   Specify the size of read buffer.
-                               (default: 16MiB)
--M, --nroutes                  Specify the size of the route_table.
-                               (default: 1000K)
--g, --benchmark                Measure the time to lookup.
--q, --quiet                    Minimal verbosity output
--l, --lookup <addr>            Specify lookup address.
--L, --lookup-file <file>       Specify lookup address from a file.
--4, --ipv4                     Specify that the query is IPv4. (default)
--6, --ipv6                     Specify that the query is IPv6.
--H, --heatmap <file-prefix>    Produces the heatmap.
--t, --log <log-name>           Turn on logging.
+-h, --help                      Display this help and exit.
+-V, --version                   Print the program version.
+-m, --compat-mode               Display in libbgpdump -m compatible mode.
+-b, --brief                     List information (i.e., simple prefix-nexthops).
+-B, --blaster <addr>[:port]     Blast RIB to a BGP speaker.
+-w, --withdraw-delay  <secs>    Blaster Mode. Send withdraw after <N> seconds.
+-D, --blaster-dump              Blast BGP stream to a file.
+-T, --prefix-limit              Prefix limit for Blaster mode.
+-S, --next-hop-self <addr>      Overwrite nexthop attribute.
+-P, --peer-table                Display the peer table and exit.
+-p, --peer <index>[,<index>]    Select peers by peer_index (max 32) (default all).
+-a, --autnum <asn> [-a ...]     Blaster Mode. Specify ASN (max 8) (default asn 65535).
+-u, --diff                      Shows unified diff. Specify two peers.
+-U, --diff-verbose              Shows the detailed info of unified diff.
+-r, --diff-table                Specify to create diff route_table.
+-c, --count                     Count the route number.
+-j, --plen-dist                 Count the route number by prefixlen.
+-k, --peer-stat                 Shows prefix-length distribution.
+-N, --bufsiz                    Specify the size of read buffer (default: 16MiB).
+-M, --nroutes                   Specify the size of the route_table (default: 1000K).
+-g, --benchmark                 Measure the time to lookup.
+-L, --lookup <addr>             Specify lookup address.
+-f, --lookup-file <file>        Specify lookup address from a file.
+-H, --heatmap <file-prefix>     Produces the heatmap.
+-l, --log <trace|debug|info...> Turn on logging.
 ```
 
 ## Load test example
@@ -67,13 +58,12 @@ sys	0m0.042s
 ```
 
 ```sh
-lbzcat -n 10 -d data/*.bz2|
-  build/src/bgpdump2 -B $TARGET_IP:$TARGET_PORT \
+build/src/bgpdump2 -B $TARGET_IP:$TARGET_PORT \
     -p $INDEX [-p $INDEX ...] \
     [-a $LOCAL_AS] \
     [-T $PREFIX_COUNT] \
     -q \
-    [-S $LOCAL_ADDR]
+    [-S $LOCAL_ADDR] <(lbzcat -n 10 -d data/*.bz2)
 ```
 
 ### Bird config example
