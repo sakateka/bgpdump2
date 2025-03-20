@@ -157,6 +157,8 @@ log_reset() {
 }
 inline void
 log_enable_name(char *log_name) {
+    log_reset();
+
     enum log_id lid = -1;
     for (uint64_t idx = 0; idx < sizeof(loggers) / sizeof(struct logger);
          idx++) {

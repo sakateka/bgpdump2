@@ -718,24 +718,22 @@ void
 bgpdump_rewrite_nh(uint8_t *raw_path, uint16_t path_length) {
     uint8_t pa_flags, pa_type;
     uint16_t pa_length;
-    uint8_t *pa;
 
-    pa = raw_path;
-    while (pa < (raw_path + path_length)) {
-        pa_flags = *pa;
-        pa_type = *(pa + 1);
-        pa += 2;
+    uint8_t *pa = raw_path;
+    uint8_t *end = pa + path_length;
+
+    while (pa < end) {
+        pa_flags = read_u8(&pa, end);
+        pa_type = read_u8(&pa, end);
         if (pa_flags & 0x10) { /* extended length ? */
-            pa_length = *pa << 8 | *(pa + 1);
-            pa += 2;
+            pa_length = read_u16(&pa, end);
         } else {
-            pa_length = *pa;
-            pa++;
+            pa_length = read_u8(&pa, end);
         }
 
         switch (pa_type) {
         case NEXT_HOP: /* ipv4 next hop */
-            if (nhs == AF_INET) {
+            if (nhs_addr4.sin_port) {
                 memcpy(pa, &nhs_addr4.sin_addr, 4);
             }
             return;
@@ -743,33 +741,33 @@ bgpdump_rewrite_nh(uint8_t *raw_path, uint16_t path_length) {
             uint16_t afi;
             uint8_t safi, nh_len;
 
-            afi = *pa << 8 | *(pa + 1);
-            safi = *(pa + 2);
-            nh_len = *(pa + 3);
+            afi = read_u16(&pa, end);
+            safi = read_u8(&pa, end);
+            nh_len = read_u8(&pa, end);
 
             /* ipv6 unicast */
-            if (nhs == AF_INET6 && afi == 2 && safi == 1 && nh_len == 16) {
-                memcpy(pa + 4, &nhs_addr6.sin6_addr, 16);
+            if (nhs_addr6.sin6_port && afi == 2 && safi == 1 && nh_len == 16) {
+                memcpy(pa, &nhs_addr6.sin6_addr, 16);
             }
 
             /* ipv6 labeled unicast */
-            if (nhs == AF_INET6 && afi == 2 && safi == 4 && nh_len == 16) {
-                memcpy(pa + 4, &nhs_addr6.sin6_addr, 16);
+            if (nhs_addr6.sin6_port && afi == 2 && safi == 4 && nh_len == 16) {
+                memcpy(pa, &nhs_addr6.sin6_addr, 16);
             }
 
             /* ipv6 unicast, mapped ipv4 nexthop */
-            if (nhs == AF_INET && afi == 2 && safi == 1 && nh_len == 16) {
-                memcpy(pa + 4 + 12, &nhs_addr4.sin_addr, 4);
+            if (nhs_addr4.sin_port && afi == 2 && safi == 1 && nh_len == 16) {
+                memcpy(pa + 12, &nhs_addr4.sin_addr, 4);
             }
 
             /* ipv6 labeled unicast, mapped ipv4 nexthop */
-            if (nhs == AF_INET && afi == 2 && safi == 4 && nh_len == 16) {
-                memcpy(pa + 4 + 12, &nhs_addr4.sin_addr, 4);
+            if (nhs_addr4.sin_port && afi == 2 && safi == 4 && nh_len == 16) {
+                memcpy(pa + 12, &nhs_addr4.sin_addr, 4);
             }
 
             /* ipv4 labeled unicast */
-            if (nhs == AF_INET && afi == 1 && safi == 4 && nh_len == 4) {
-                memcpy(pa + 4, &nhs_addr4.sin_addr, 4);
+            if (nhs_addr4.sin_port && afi == 1 && safi == 4 && nh_len == 4) {
+                memcpy(pa, &nhs_addr4.sin_addr, 4);
             }
         }
             return;
@@ -1148,7 +1146,7 @@ bgpdump_process_table_v2_rib_entry(
          */
         if (blaster || blaster_dump) {
             /* next hop rewrite ? */
-            if (nhs) {
+            if (nhs_addr6.sin6_port || nhs_addr4.sin_port) {
                 bgpdump_rewrite_nh((uint8_t *)p, attribute_length);
             }
 

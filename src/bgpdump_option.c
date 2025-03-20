@@ -125,7 +125,6 @@ int blaster = 0;
 char *blaster_addr = NULL;
 int blaster_dump = 0;
 uint64_t prefix_limit = 0;
-int nhs = 0;
 struct sockaddr_in nhs_addr4;
 struct sockaddr_in6 nhs_addr6;
 int withdraw_delay = 0;
@@ -159,7 +158,7 @@ bgpdump_getopt(int argc, char **argv) {
     int status = 0;
     char *endptr;
 
-    log_reset();
+    log_enable_name("info");
 
     while (1) {
         int ch = getopt_long(argc, argv, optstring, longopts, &longindex);
@@ -197,9 +196,15 @@ bgpdump_getopt(int argc, char **argv) {
             break;
         case 'S':
             if (inet_pton(AF_INET, optarg, &nhs_addr4.sin_addr)) {
-                nhs = AF_INET;
+                nhs_addr4.sin_port = 1; // addr is set
+                char sbuf[64];
+                inet_ntop(AF_INET, &nhs_addr4.sin_addr, sbuf, sizeof(sbuf));
+                LOG(INFO, "rewrite ipv4 next hop to %s\n", sbuf);
             } else if (inet_pton(AF_INET6, optarg, &nhs_addr6.sin6_addr)) {
-                nhs = AF_INET6;
+                nhs_addr6.sin6_port = 1; // addr is set
+                char sbuf[64];
+                inet_ntop(AF_INET6, &nhs_addr6.sin6_addr, sbuf, sizeof(sbuf));
+                LOG(INFO, "rewrite ipv6 next hop to %s\n", sbuf);
             }
             break;
 

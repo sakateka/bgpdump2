@@ -40,7 +40,6 @@ extern char *heatmap_prefix;
 extern int blaster;
 extern int blaster_dump;
 extern char *blaster_addr;
-extern int nhs;
 extern struct sockaddr_in nhs_addr4;
 extern struct sockaddr_in6 nhs_addr6;
 extern int withdraw_delay;
